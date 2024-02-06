@@ -70,14 +70,14 @@
 
     async void TestServo()
     {
-        sw.Degree = degrees;
+        sw.degree = degrees;
         await ServoController.TestServoAsync(sw).ConfigureAwait(false);
     }
 
     void Add()
     {
         processing = true;
-        sw.Degree = degrees;
+        sw.degree = degrees;
         ServoController.AddServ(sw);
         processing = false;
         sw = new Servo();

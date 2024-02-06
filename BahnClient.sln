@@ -3,11 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33502.453
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BahnClient", "BahnClient\BahnClient.csproj", "{CB7D5684-C922-4FB0-85F2-954EA3FF92FB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BahnClient", "BahnClient\BahnClient.csproj", "{CB7D5684-C922-4FB0-85F2-954EA3FF92FB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModellClientLib", "ModellClientLib\ModellClientLib.csproj", "{424BF403-F63D-422E-965A-BE0A5EF4E759}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModellClientLib", "ModellClientLib\ModellClientLib.csproj", "{424BF403-F63D-422E-965A-BE0A5EF4E759}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModellClientTestConsole", "ModellClientTestConsole\ModellClientTestConsole.csproj", "{A46FF814-676B-4026-A285-A0F9A631DAFF}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModellClientTestConsole", "ModellClientTestConsole\ModellClientTestConsole.csproj", "{A46FF814-676B-4026-A285-A0F9A631DAFF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

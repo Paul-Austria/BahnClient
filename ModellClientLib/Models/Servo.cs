@@ -26,7 +26,7 @@ namespace ModellClientLib.Models
 
         [Required]
         private int currentDegree = 0;
-        public int Degree { get { return currentDegree; } set {
+        public int degree { get { return currentDegree; } set {
                 if(value >= MinDegree && value <= MaxDegree)
                 {
                     currentDegree = value;

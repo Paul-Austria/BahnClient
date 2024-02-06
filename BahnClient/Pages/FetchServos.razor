@@ -35,7 +35,7 @@
                     <td>@servo.pwmPinId</td>
                     <td>@servo.MinDegree</td>
                     <td>@servo.MaxDegree</td>
-                    <td>@servo.Degree</td>
+                    <td>@servo.degree</td>
 
                     <td>
                         <button class="btn btn-danger" @onclick="@(() => DeleteServo(servo.iD))">Delete</button>
@@ -58,7 +58,7 @@
 
     async void UpdateServoValue(Servo servoToUpdate,int newValue)
     {
-        servoToUpdate.Degree = newValue;
+        servoToUpdate.degree = newValue;
         await ServoController.UpdateServoAsync(servoToUpdate).ConfigureAwait(false);
     }
     protected override void OnInitialized()

@@ -24,7 +24,7 @@ namespace ModellClientLib.Mqtt
 
     public async Task Transmit(string topic, string msg)
     {
-        if (client != null && client.IsConnected)
+        if (client != null && client.IsConnected && topic != "")
         {
             var message = new MqttApplicationMessageBuilder()
                 .WithTopic(topic)

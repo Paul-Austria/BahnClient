@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ModellClientLib.Context;
 
@@ -10,9 +11,10 @@ using ModellClientLib.Context;
 namespace ModellClientLib.Migrations
 {
     [DbContext(typeof(ModellDBContext))]
-    partial class ModellDBContextModelSnapshot : ModelSnapshot
+    [Migration("20240220140728_uptdatedSegment")]
+    partial class uptdatedSegment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "6.0.24");
@@ -22,10 +24,6 @@ namespace ModellClientLib.Migrations
                     b.Property<int>("iD")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("SegmentGroup")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("SegmentName")
                         .IsRequired()
@@ -72,20 +70,17 @@ namespace ModellClientLib.Migrations
 
             modelBuilder.Entity("ModellClientLib.Models.ServoState", b =>
                 {
-                    b.Property<int>("ServoStateID")
+                    b.Property<int>("ServoID")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("SegmentiD")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("ServoID")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("ServoPos")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("ServoStateID");
+                    b.HasKey("ServoID");
 
                     b.HasIndex("SegmentiD");
 
@@ -122,20 +117,17 @@ namespace ModellClientLib.Migrations
 
             modelBuilder.Entity("ModellClientLib.Models.SwitchState", b =>
                 {
-                    b.Property<int>("SwitchStateID")
+                    b.Property<int>("SwitchID")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("SegmentiD")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("SwitchID")
-                        .HasColumnType("INTEGER");
-
                     b.Property<bool>("reqSwichState")
                         .HasColumnType("INTEGER");
 
-                    b.HasKey("SwitchStateID");
+                    b.HasKey("SwitchID");
 
                     b.HasIndex("SegmentiD");
 

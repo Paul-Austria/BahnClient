@@ -31,6 +31,12 @@ namespace ModellClientLib.Controllers
             dbContext.switches.Remove(sw);
             dbContext.SaveChanges();
         }
+        public static IEnumerable<Switch> GetSwitches()
+        {
+            var dbContext = new ModellDBContext();
+
+            return dbContext.switches as IEnumerable<Switch>;
+        }
         public static async Task UpdateSWAsync(Switch sw) {
             var dbContext = new ModellDBContext();
             dbContext.Update(sw);

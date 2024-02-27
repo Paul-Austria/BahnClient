@@ -37,6 +37,17 @@ namespace ModellClientLib.Controllers
 
             return dbContext.switches as IEnumerable<Switch>;
         }
+
+        public static async Task SendCurrentStateByTopicAsync(string topic)
+        {
+            var dbContext = new ModellDBContext();
+            var switches = dbContext.switches.Where(s => s.topic.Contains(topic));
+            foreach (var sw in switches)
+            {
+                await MqttClientSingleton.Instance.Transmit(sw.topic, JsonSerializer.Serialize(sw)).ConfigureAwait(false);
+
+            }
+        }
         public static async Task UpdateSWAsync(Switch sw) {
             var dbContext = new ModellDBContext();
             dbContext.Update(sw);

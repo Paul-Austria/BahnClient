@@ -44,6 +44,18 @@ namespace ModellClientLib.Controllers
             await MqttClientSingleton.Instance.Transmit(servo.topic, JsonSerializer.Serialize(servo)).ConfigureAwait(false);
             dbContext.SaveChanges();
         }
+
+
+        public static async Task SendCurrentStateByTopicAsync(string topic)
+        {
+            var dbContext = new ModellDBContext();
+            var servos = dbContext.servos.Where(s => s.topic.Contains(topic)).ToList();
+            foreach (var servo in servos)
+            {
+                await MqttClientSingleton.Instance.Transmit(servo.topic, JsonSerializer.Serialize(servo)).ConfigureAwait(false);
+
+            }
+        }
         public static void Delete(int id)
         {
             var dbContext = new ModellDBContext();

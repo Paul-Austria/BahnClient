@@ -24,8 +24,9 @@ namespace ModellClientLib.Mqtt
 
     public async Task Transmit(string topic, string msg)
     {
-        if (client != null && client.IsConnected && topic != "")
-        {
+            Connect();
+            if (client != null && client.IsConnected && topic != "")
+            {
             var message = new MqttApplicationMessageBuilder()
                 .WithTopic(topic)
                 .WithPayload(msg)
@@ -60,7 +61,7 @@ namespace ModellClientLib.Mqtt
                     .WithCleanSession()
                     .Build();
 
-                var connectResult = await client.ConnectAsync(options).ConfigureAwait(false);
+                var connectResult = await client.ConnectAsync(options);
             }
 
         }

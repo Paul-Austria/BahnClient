@@ -14,7 +14,7 @@ namespace HelloWorld
 {
     class ModellTestClient
     {
-        static string broker = "192.168.1.180";
+        static string broker = "192.168.31.123";
         static int port = 1883;
         static string clientId = Guid.NewGuid().ToString();
 

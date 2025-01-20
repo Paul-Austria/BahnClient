@@ -10,7 +10,7 @@ namespace ModellClientLib.Mqtt
 {
     public class MqttClientSingleton
     {
-        string broker = "192.168.1.180";
+        string broker = "192.168.31.123";
         int port = 1883;
         string clientId = Guid.NewGuid().ToString();
         private static MqttClientSingleton _instance;

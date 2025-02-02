@@ -6,7 +6,7 @@
 
 const char* ssid = "H338A_2AC3_2.4G";
 const char* password = "ucgfFyGgK2CX";
-const char* mqttServer = "192.168.1.180";
+const char* mqttServer = "192.168.31.123";
 const int mqttPort = 1883;
 const char* mqttTopic1 = "station1/servo";
 const char* mqttTopic2 = "station1/sw";

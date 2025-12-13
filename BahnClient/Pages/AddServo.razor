@@ -1,85 +1,144 @@
 ﻿@page "/AddServo"
-@using ModellClientLib.Context;
-@using ModellClientLib.Controllers;
-@using ModellClientLib.Models;
+@using ModellClientLib.Context
+@using ModellClientLib.Controllers
+@using ModellClientLib.Models
 @using Microsoft.AspNetCore.Components.Forms
-@using ModellClientLib.Mqtt;
+@using ModellClientLib.Mqtt
 
 <PageTitle>Add Servo</PageTitle>
 
-<div class="container mt-4">
-    <h1>Add Servo</h1>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
 
-    @if (!processing)
-    {
-        <EditForm Model="@sw" OnValidSubmit="Add" class="mt-4">
-            <div class="form-group">
-                <label for="topic">Topic:</label>
-                <InputText id="topic" @bind-Value="@sw.topic" class="form-control" />
+            <div class="card shadow-lg border-0 rounded-3">
+                <div class="card-header bg-primary text-white p-3">
+                    <h3 class="mb-0"><i class="bi bi-gear-wide-connected me-2"></i>Configure New Servo</h3>
+                </div>
+
+                <div class="card-body p-4">
+                    @if (processing)
+                    {
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+                            <p class="mt-3 text-muted">Processing request...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <EditForm Model="@sw" OnValidSubmit="Add">
+                            <DataAnnotationsValidator />
+
+                            <h6 class="text-muted text-uppercase small fw-bold mb-3">Identity</h6>
+                            <div class="form-floating mb-3">
+                                <InputText id="name" @bind-Value="@sw.name" class="form-control" placeholder="Servo Name" />
+                                <label for="name">Servo Name</label>
+                                <ValidationMessage For="@(() => sw.name)" class="text-danger small" />
+                            </div>
+
+                            <div class="form-floating mb-3">
+                                <InputText id="topic" @bind-Value="@sw.topic" class="form-control" placeholder="MQTT Topic" />
+                                <label for="topic">MQTT Topic</label>
+                            </div>
+
+                            <h6 class="text-muted text-uppercase small fw-bold mb-3 mt-4">Hardware Config</h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label for="pwmPinId" class="form-label small">PWM Pin</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-cpu"></i></span>
+                                        <InputNumber id="pwmPinId" @bind-Value="@sw.pwmPinId" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="MinDegree" class="form-label small">Min Angle</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">°</span>
+                                        <InputNumber id="MinDegree" @bind-Value="@sw.MinDegree" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="MaxDegree" class="form-label small">Max Angle</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">°</span>
+                                        <InputNumber id="MaxDegree" @bind-Value="@sw.MaxDegree" class="form-control" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-light border mt-4 mb-4">
+                                <label class="form-label fw-bold text-secondary"><i class="bi bi-joystick"></i> Test Position</label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" class="form-range" min="@sw.MinDegree" max="@sw.MaxDegree" @bind="degrees" />
+                                    <span class="badge bg-secondary" style="width: 50px;">@degrees°</span>
+                                    <button type="button" class="btn btn-outline-dark btn-sm" @onclick="@(() => TestServo())">
+                                        Move
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.8em;">Adjust slider and click Move to test before saving.</small>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-check-lg"></i> Save Servo
+                                </button>
+                            </div>
+                        </EditForm>
+                    }
+                </div>
             </div>
 
-            <div class="form-group">
-                <label for="name">Name:</label>
-                <InputText id="name" @bind-Value="@sw.name" class="form-control" />
-                <ValidationMessage For="@(() => sw.name)" />
-            </div>
-
-            <div class="form-group">
-                <label for="pwmPinId">PWM Pin ID:</label>
-                <InputNumber id="pwmPinId" @bind-Value="@sw.pwmPinId" class="form-control" />
-            </div>
-
-            <div class="form-group">
-                <label for="MinDegree">Min Degree:</label>
-                <InputNumber id="MinDegree" @bind-Value="@sw.MinDegree" class="form-control" />
-            </div>
-
-            <div class="form-group">
-                <label for="MaxDegree">Max Degree:</label>
-                <InputNumber id="MaxDegree" @bind-Value="@sw.MaxDegree" class="form-control" />
-            </div>
-
-            <div class="form-group">
-                <label for="MaxDegree">Set Degree:</label>
-                <InputNumber id="MaxDegree" @bind-Value="@degrees" class="form-control" />
-            </div>
-
-            <button type="submit" class="btn btn-primary">Add Servo</button>
-        </EditForm>
-        <button class="btn btn-primary" @onclick="@(() => TestServo())">Test Servo</button>
-
-    }
-    else
-    {
-        <div class="mt-4">
-            <p><em>Processing...</em></p>
         </div>
-    }
+    </div>
 </div>
 
 @code {
     ModellDBContext context = new ModellDBContext();
     Servo sw = new Servo();
-    int degrees = 0;
+
+    // Default values for better UX
+    int degrees = 90;
     bool processing = false;
+
     protected override void OnInitialized()
     {
+        // Set some defaults if new
+        sw.MinDegree = 0;
+        sw.MaxDegree = 180;
 
+        // Ensure MQTT is ready
         MqttClientSingleton.Instance.Connect();
     }
 
     async void TestServo()
     {
-        sw.degree = degrees;
-        await ServoController.TestServoAsync(sw).ConfigureAwait(false);
+        // We only use the temporary 'degrees' variable for the test action
+        // We do NOT overwrite the main servo object's state permanently here,
+        // just prepare it for the controller command.
+        var tempServo = new Servo
+            {
+                topic = sw.topic,
+                pwmPinId = sw.pwmPinId,
+                degree = degrees // The value from the slider
+            };
+
+        await ServoController.TestServoAsync(tempServo).ConfigureAwait(false);
     }
 
     void Add()
     {
         processing = true;
+        // Ensure the initial degree is set to something safe (e.g. Min or current Test value)
         sw.degree = degrees;
+
         ServoController.AddServ(sw);
+
+        // Simulate a tiny delay for UX so the user sees the spinner
+        // await Task.Delay(500);
+
         processing = false;
-        sw = new Servo();
+        sw = new Servo { MinDegree = 0, MaxDegree = 180 }; // Reset with defaults
+        degrees = 90; // Reset slider
+        StateHasChanged();
     }
 }

@@ -1,0 +1,318 @@
+﻿@page "/blockcontrol"
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Block & Signal Manager</PageTitle>
+
+<div class="container-fluid vh-100 py-3" style="background-color: #f0f2f5;">
+    <div class="row h-100">
+
+        <div class="col-md-4 col-xl-3 d-flex flex-column gap-3">
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white fw-bold text-primary">
+                    <i class="bi bi-plus-square"></i> Add Block Area
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="small text-muted">Block Name</label>
+                        <input class="form-control" placeholder="e.g. Sector 1" @bind="newBlockName" />
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="small text-muted">Sensor A (Entry)</label>
+                            <input type="number" class="form-control" placeholder="Pin" @bind="newBlockPinA" />
+                        </div>
+                        <div class="col-6">
+                            <label class="small text-muted">Sensor B (Exit)</label>
+                            <input type="number" class="form-control" placeholder="Pin" @bind="newBlockPinB" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="AddBlock">create Block</button>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white fw-bold text-success">
+                    <i class="bi bi-geo-alt"></i> Add Sensor Point
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="small text-muted">Point Name</label>
+                        <input class="form-control" placeholder="e.g. Station Stop" @bind="newPointName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="small text-muted">Sensor Pin</label>
+                        <input type="number" class="form-control" placeholder="Pin" @bind="newPointPin" />
+                    </div>
+                    <button class="btn btn-success w-100" @onclick="AddPoint">Create Point</button>
+                </div>
+            </div>
+
+            <div class="alert alert-info small mt-auto">
+                <i class="bi bi-info-circle-fill"></i> <strong>How it works:</strong>
+                <ul class="mb-0 ps-3">
+                    <li><strong>Blocks:</strong> Count magnets entering (A) and leaving (B). If count > 0, Signal is Red.</li>
+                    <li><strong>Points:</strong> Single sensors for spot detection.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-md-8 col-xl-9 overflow-auto">
+
+            <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-stoplights"></i> Signal Blocks</h5>
+
+            <div class="row g-3 mb-5">
+                @if (Blocks.Count == 0)
+                {
+                    <div class="col-12 text-center text-muted py-4 border rounded dashed-border">
+                        No Blocks Configured. Add one on the left.
+                    </div>
+                }
+                @foreach (var block in Blocks)
+                {
+                    <div class="col-md-6 col-xl-4">
+                        <div class="card h-100 border-0 shadow-sm transition-card">
+                            <div class="card-body d-flex flex-column">
+
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                        <h5 class="fw-bold mb-0">@block.Name</h5>
+                                        <small class="text-muted">Pins: @block.PinA <i class="bi bi-arrow-right"></i> @block.PinB</small>
+                                    </div>
+                                    <div class="signal-box @(block.IsOccupied ? "bg-danger shadow-red" : "bg-success shadow-green")">
+                                        @(block.IsOccupied ? "STOP" : "FREE")
+                                    </div>
+                                </div>
+
+                                <div class="alert @(block.IsOccupied ? "alert-warning" : "alert-light") d-flex justify-content-between align-items-center mb-3">
+                                    <span>
+                                        <i class="bi bi-magnet-fill me-2"></i>Count: <strong>@block.MagnetCount</strong>
+                                    </span>
+                                    @if (block.IsOccupied)
+                                    {
+                                        <span class="badge bg-warning text-dark animate-pulse">Occupied</span>
+                                    }
+                                </div>
+
+                                <button class="btn btn-outline-secondary btn-sm mt-auto" @onclick="() => ResetBlock(block)">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Reset Counter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-bullseye"></i> Sensor Points</h5>
+            <div class="row g-3">
+                @foreach (var point in Points)
+                {
+                    <div class="col-md-4 col-xl-3">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h6 class="fw-bold mb-0">@point.Name</h6>
+                                    <small class="text-muted">Pin: @point.Pin</small>
+                                </div>
+                                <div class="@(point.IsTriggered ? "text-danger" : "text-secondary")">
+                                    <i class="bi bi-record-circle-fill fs-4 @(point.IsTriggered ? "animate-ping" : "")"></i>
+                                </div>
+                            </div>
+                            <div class="card-footer bg-white border-0 pt-0">
+                                <button class="btn btn-link btn-sm text-decoration-none p-0 text-muted" @onclick="() => ResetPoint(point)">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashed-border {
+        border-style: dashed !important;
+        border-color: #ccc !important;
+    }
+
+    .signal-box {
+        width: 60px;
+        height: 30px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 0.7em;
+        transition: all 0.3s ease;
+    }
+
+    .shadow-red {
+        box-shadow: 0 0 15px rgba(220, 53, 69, 0.6);
+    }
+
+    .shadow-green {
+        box-shadow: 0 0 15px rgba(25, 135, 84, 0.6);
+    }
+
+    .animate-pulse {
+        animation: pulse 2s infinite;
+    }
+
+ </style>
+
+@code {
+    // --- MODELS ---
+    public class BlockArea
+    {
+        public string Name { get; set; } = "";
+        public int PinA { get; set; }
+        public int PinB { get; set; }
+        public int MagnetCount { get; set; }
+        public bool IsOccupied { get; set; }
+    }
+
+    public class SensorPoint
+    {
+        public string Name { get; set; } = "";
+        public int Pin { get; set; }
+        public bool IsTriggered { get; set; }
+    }
+
+    // --- STATE ---
+    List<BlockArea> Blocks = new List<BlockArea>();
+    List<SensorPoint> Points = new List<SensorPoint>();
+
+    // Form inputs
+    string newBlockName = "";
+    int newBlockPinA;
+    int newBlockPinB;
+
+    string newPointName = "";
+    int newPointPin;
+
+    protected override void OnInitialized()
+    {
+        // 1. Subscribe to MQTT
+        // We listen to everything under layout/# to catch status updates
+        // Note: Assumes your MqttClientSingleton has an Event we can hook into
+        // MqttClientSingleton.Instance.MessageReceived += OnMqttMessageReceived;
+        // MqttClientSingleton.Instance.Subscribe("layout/#");
+
+        // Mock Data for Visualization
+        Blocks.Add(new BlockArea { Name = "Main Line East", PinA = 12, PinB = 14, MagnetCount = 1, IsOccupied = true });
+        Blocks.Add(new BlockArea { Name = "Siding 1", PinA = 27, PinB = 26, MagnetCount = 0, IsOccupied = false });
+
+        Points.Add(new SensorPoint { Name = "Station Halt", Pin = 33, IsTriggered = false });
+    }
+
+    public void Dispose()
+    {
+        // Cleanup event handlers
+        // MqttClientSingleton.Instance.MessageReceived -= OnMqttMessageReceived;
+    }
+
+    // --- MQTT HANDLER ---
+    // Simulating how you would parse the topics from your ESP32
+    /*
+    private void OnMqttMessageReceived(string topic, string payload)
+    {
+        // InvokeAsync ensures UI updates run on the UI thread
+        InvokeAsync(() => {
+            // Topic structure: layout/{name}/magnet_count
+            var parts = topic.Split('/');
+
+            if (parts.Length >= 3 && parts[0] == "layout")
+            {
+                string deviceName = parts[1];
+                string attribute = parts[2];
+
+                // FIND BLOCK
+                var block = Blocks.FirstOrDefault(b => b.Name == deviceName);
+                if (block != null)
+                {
+                    if (attribute == "magnet_count") block.MagnetCount = int.Parse(payload);
+                    if (attribute == "train_present") block.IsOccupied = payload == "1";
+                    StateHasChanged();
+                    return;
+                }
+
+                // FIND POINT (Structure: layout/point/{name}/detected)
+                if (parts[1] == "point")
+                {
+                    string pointName = parts[2];
+                    var point = Points.FirstOrDefault(p => p.Name == pointName);
+                    if (point != null && attribute == "detected")
+                    {
+                        point.IsTriggered = true;
+                        // Auto-reset UI trigger visual after 2 seconds
+                        Task.Delay(2000).ContinueWith(_ => InvokeAsync(() => {
+                            point.IsTriggered = false;
+                            StateHasChanged();
+                        }));
+                    }
+                }
+            }
+        });
+    }
+    */
+
+    // --- ACTIONS ---
+
+    void AddBlock()
+    {
+        if (string.IsNullOrWhiteSpace(newBlockName)) return;
+
+        // 1. Update Local List
+        var b = new BlockArea { Name = newBlockName, PinA = newBlockPinA, PinB = newBlockPinB };
+        Blocks.Add(b);
+
+        // 2. Send MQTT Command to ESP32
+        // Format matches ESP32: { "name": "...", "A": 1, "B": 2 }
+        var payload = new { name = newBlockName, A = newBlockPinA, B = newBlockPinB };
+        string json = JsonSerializer.Serialize(payload);
+        // MqttClientSingleton.Instance.Publish("layout/control/add_block", json);
+
+        // Reset Form
+        newBlockName = ""; newBlockPinA = 0; newBlockPinB = 0;
+    }
+
+    void ResetBlock(BlockArea b)
+    {
+        b.MagnetCount = 0;
+        b.IsOccupied = false;
+
+        // Command ESP32 to reset logic
+        var payload = new { name = b.Name };
+        string json = JsonSerializer.Serialize(payload);
+        // MqttClientSingleton.Instance.Publish("layout/control/reset_block", json);
+    }
+
+    void AddPoint()
+    {
+        if (string.IsNullOrWhiteSpace(newPointName)) return;
+
+        var p = new SensorPoint { Name = newPointName, Pin = newPointPin };
+        Points.Add(p);
+
+        // Command ESP32
+        var payload = new { name = newPointName, pin = newPointPin };
+        string json = JsonSerializer.Serialize(payload);
+        // MqttClientSingleton.Instance.Publish("layout/control/add_point", json);
+
+        newPointName = ""; newPointPin = 0;
+    }
+
+    void ResetPoint(SensorPoint p)
+    {
+        p.IsTriggered = false;
+        var payload = new { name = p.Name };
+        string json = JsonSerializer.Serialize(payload);
+        // MqttClientSingleton.Instance.Publish("layout/control/reset_point", json);
+    }
+}

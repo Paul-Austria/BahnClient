@@ -1,0 +1,417 @@
+﻿@page "/layoutcontrol"
+@using System.Linq
+@using ModellClientLib.Models
+
+<PageTitle>Layout Control Panel</PageTitle>
+
+<div class="container-fluid vh-100 d-flex flex-column overflow-hidden" style="background-color: #1e1e24; color: #e2e2e2;">
+
+    <div class="d-flex justify-content-between align-items-center p-3 border-bottom border-secondary bg-dark">
+        <div class="d-flex align-items-center gap-3">
+            <h4 class="m-0 fw-bold"><i class="bi bi-map-fill text-warning"></i> Mimic Panel</h4>
+
+            <div class="btn-group">
+                <button class="btn @(IsEditMode ? "btn-warning text-dark" : "btn-outline-secondary")" @onclick="() => IsEditMode = true">
+                    <i class="bi bi-pencil-fill"></i> Edit
+                </button>
+                <button class="btn @(!IsEditMode ? "btn-success" : "btn-outline-secondary")" @onclick="() => IsEditMode = false">
+                    <i class="bi bi-play-fill"></i> Run
+                </button>
+            </div>
+        </div>
+
+        <div>
+            @if (IsEditMode)
+            {
+                <button class="btn btn-sm btn-outline-danger me-2" @onclick="ClearBoard">Clear Board</button>
+                <button class="btn btn-sm btn-primary" @onclick="SaveLayout"><i class="bi bi-save"></i> Save</button>
+            }
+        </div>
+    </div>
+
+    <div class="d-flex flex-grow-1 overflow-hidden">
+
+        @if (IsEditMode)
+        {
+            <div class="d-flex flex-column p-3 gap-2 bg-dark border-end border-secondary" style="width: 200px; overflow-y: auto;">
+                <h6 class="text-muted text-uppercase small fw-bold">Track</h6>
+                <button class="btn @(SelectedTool == TrackType.Straight ? "btn-light" : "btn-outline-secondary") text-start" @onclick="() => SelectedTool = TrackType.Straight">
+                    <i class="bi bi-dash-lg"></i> Straight
+                </button>
+                <button class="btn @(SelectedTool == TrackType.Curve ? "btn-light" : "btn-outline-secondary") text-start" @onclick="() => SelectedTool = TrackType.Curve">
+                    <i class="bi bi-arrow-return-right"></i> Curve
+                </button>
+                <button class="btn @(SelectedTool == TrackType.Cross ? "btn-light" : "btn-outline-secondary") text-start" @onclick="() => SelectedTool = TrackType.Cross">
+                    <i class="bi bi-plus-lg"></i> Crossing
+                </button>
+
+                <h6 class="text-muted text-uppercase small fw-bold mt-3">Devices</h6>
+                <div class="btn-group w-100">
+                    <button class="btn @(SelectedTool == TrackType.SwitchLeft ? "btn-light" : "btn-outline-secondary")" @onclick="() => SelectedTool = TrackType.SwitchLeft" title="Left Diverge">
+                        <i class="bi bi-arrow-up-left"></i> Left
+                    </button>
+                    <button class="btn @(SelectedTool == TrackType.SwitchRight ? "btn-light" : "btn-outline-secondary")" @onclick="() => SelectedTool = TrackType.SwitchRight" title="Right Diverge">
+                        Right <i class="bi bi-arrow-down-right"></i>
+                    </button>
+                </div>
+
+                <button class="btn @(SelectedTool == TrackType.Signal ? "btn-light" : "btn-outline-secondary") text-start mt-2" @onclick="() => SelectedTool = TrackType.Signal">
+                    <i class="bi bi-stoplights"></i> Signal Block
+                </button>
+                <button class="btn @(SelectedTool == TrackType.Sensor ? "btn-light" : "btn-outline-secondary") text-start" @onclick="() => SelectedTool = TrackType.Sensor">
+                    <i class="bi bi-bullseye"></i> Sensor Point
+                </button>
+
+                <button class="btn @(SelectedTool == TrackType.Text ? "btn-light" : "btn-outline-secondary") text-start" @onclick="() => SelectedTool = TrackType.Text">
+                    <i class="bi bi-fonts"></i> Text Marker
+                </button>
+
+                <h6 class="text-muted text-uppercase small fw-bold mt-3">Tools</h6>
+                <button class="btn @(SelectedTool == TrackType.Empty ? "btn-danger" : "btn-outline-danger") text-start" @onclick="() => SelectedTool = TrackType.Empty">
+                    <i class="bi bi-eraser"></i> Eraser
+                </button>
+            </div>
+        }
+
+        @if (SelectedCell != null && IsEditMode && IsConfigurable(SelectedCell.Type))
+        {
+            <div class="d-flex flex-column p-3 bg-dark border-start border-secondary" style="width: 250px;">
+                <h6 class="fw-bold text-warning">Configuration</h6>
+
+                @if (IsSwitch(SelectedCell.Type))
+                {
+                    <p class="small text-muted mb-3">Link this tile to a physical device.</p>
+                    <label class="form-label small">Select Physical Switch</label>
+                    <select class="form-select form-select-sm mb-3" @bind="SelectedCell.LinkedId">
+                        <option value="0">-- Unlinked --</option>
+                        @foreach (var sw in AvailableSwitches)
+                        {
+                            <option value="@sw.ID">@sw.Name (ID: @sw.ID)</option>
+                        }
+                    </select>
+                }
+
+                @if (SelectedCell.Type == TrackType.Signal)
+                {
+                    <p class="small text-muted mb-3">Link this tile to a physical device.</p>
+                    <label class="form-label small">Select Signal Block</label>
+                    <select class="form-select form-select-sm mb-3" @bind="SelectedCell.LinkedId">
+                        <option value="0">-- Unlinked --</option>
+                        @foreach (var blk in AvailableBlocks)
+                        {
+                            <option value="@blk.ID">@blk.Name</option>
+                        }
+                    </select>
+                }
+
+                @if (SelectedCell.Type == TrackType.Text)
+                {
+                    <p class="small text-muted mb-3">Enter the label text.</p>
+                    <label class="form-label small">Label Text</label>
+                    <input type="text" class="form-control form-control-sm mb-3" @bind="SelectedCell.Text" @bind:event="oninput" placeholder="e.g. Platform 1" />
+                }
+
+                <button class="btn btn-sm btn-outline-light" @onclick="() => SelectedCell = null">Close</button>
+            </div>
+        }
+
+        <div class="flex-grow-1 overflow-auto d-flex justify-content-center align-items-center p-4" style="background-image: radial-gradient(#333 1px, transparent 1px); background-size: 20px 20px;">
+            <div class="layout-grid" style="display: grid; grid-template-columns: repeat(@Cols, 40px); grid-template-rows: repeat(@Rows, 40px); gap: 1px; border: 1px solid #444;">
+                @for (int y = 0; y < Rows; y++)
+                {
+                    for (int x = 0; x < Cols; x++)
+                    {
+                        var cell = Grid[x, y];
+                        int lx = x; int ly = y;
+
+                        <div class="grid-cell @GetCellClass(cell)"
+                             style="transform: rotate(@(cell.Rotation)deg);"
+                             @onclick="() => OnCellClick(lx, ly)"
+                             @oncontextmenu="() => OnCellRightClick(lx, ly)"
+                             @oncontextmenu:preventDefault="true">
+
+                            @if (IsSwitch(cell.Type))
+                            {
+                                <div class="switch-path switch-straight @(GetSwitchState(cell) == 0 ? "active-path" : "inactive-path")"></div>
+                                <div class="switch-path switch-branch @(cell.Type == TrackType.SwitchLeft ? "branch-left" : "branch-right") @(GetSwitchState(cell) == 1 ? "active-path" : "inactive-path")"></div>
+                            }
+
+                            @if (cell.Type == TrackType.Signal)
+                            {
+                                <div class="signal-dot @(GetSignalColor(cell))"></div>
+                            }
+
+                            @if (cell.Type == TrackType.Sensor)
+                            {
+                                <div class="sensor-dot"></div>
+                            }
+
+                            @if (cell.Type == TrackType.Text)
+                            {
+                                <div class="grid-text">@cell.Text</div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* BASIC CELL */
+    .grid-cell {
+        width: 40px;
+        height: 40px;
+        background-color: #2b2b30;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+
+        .grid-cell:hover {
+            background-color: #3a3a40;
+        }
+
+    /* TRACK SHAPES */
+    .track-straight::after, .track-sensor::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 6px;
+        margin-top: -3px;
+        background: #888;
+    }
+
+    .track-curve::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        height: 6px;
+        width: 74%;
+        background: #888;
+        margin-top: -3px;
+        margin-left: -1px;
+        transform-origin: 0 50%;
+        transform: rotate(-45deg);
+    }
+
+    .track-cross::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 6px;
+        margin-top: -3px;
+        background: #888;
+    }
+
+    .track-cross::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        margin-left: -3px;
+        background: #888;
+    }
+
+    /* SWITCH PATHS */
+    .switch-path {
+        position: absolute;
+        height: 6px;
+        margin-top: -3px;
+        transition: background 0.3s;
+    }
+
+    .switch-straight {
+        top: 50%;
+        left: 0;
+        right: 0;
+    }
+
+    .switch-branch {
+        top: 50%;
+        left: 0;
+        width: 74%;
+        margin-left: -1px;
+        transform-origin: 0 50%;
+    }
+
+    .branch-left {
+        transform: rotate(-45deg);
+    }
+
+    .branch-right {
+        transform: rotate(45deg);
+    }
+
+    .active-path {
+        background: #ffc107 !important;
+        z-index: 10;
+    }
+
+    .inactive-path {
+        background: #444;
+    }
+
+    /* DEVICES */
+    .track-signal::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 6px;
+        margin-top: -3px;
+        background: #555;
+    }
+
+    .signal-dot {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid #fff;
+        z-index: 5;
+    }
+
+    .sig-green {
+        background-color: #0f0;
+        box-shadow: 0 0 5px #0f0;
+    }
+
+    .sig-red {
+        background-color: #f00;
+        box-shadow: 0 0 5px #f00;
+    }
+
+    .sensor-dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 10px;
+        height: 10px;
+        background: #0dcaf0;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        border: 2px solid white;
+        z-index: 5;
+    }
+
+    /* TEXT MARKER */
+    .grid-text {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 0.7rem;
+        font-weight: bold;
+        text-align: center;
+        line-height: 1;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        user-select: none;
+    }
+    /* Hide the background for Text cells to make them look transparent/cleaner?
+           Or keep the box. Keeping box for grid alignment feel. */
+</style>
+
+@code {
+    const int Cols = 20;
+    const int Rows = 15;
+
+    bool IsEditMode = true;
+    TrackType SelectedTool = TrackType.Straight;
+    Cell[,] Grid = new Cell[Cols, Rows];
+    Cell? SelectedCell;
+
+    List<DeviceOption> AvailableSwitches = new() { new(1, "Main Siding"), new(2, "Yard Entry") };
+    List<DeviceOption> AvailableBlocks = new() { new(100, "Sector A"), new(101, "Sector B") };
+
+    public enum TrackType { Empty, Straight, Curve, Cross, SwitchLeft, SwitchRight, Signal, Sensor, Text }
+    public record DeviceOption(int ID, string Name);
+
+    public class Cell
+    {
+        public TrackType Type { get; set; } = TrackType.Empty;
+        public int Rotation { get; set; } = 0;
+        public int LinkedId { get; set; } = 0;
+        public int State { get; set; } = 0;
+        public string Text { get; set; } = ""; // New Text property
+    }
+
+    protected override void OnInitialized()
+    {
+        for (int x = 0; x < Cols; x++) for (int y = 0; y < Rows; y++) Grid[x, y] = new Cell();
+        Grid[2, 5].Type = TrackType.Straight;
+        Grid[3, 5].Type = TrackType.Straight;
+        Grid[4, 5].Type = TrackType.SwitchLeft; Grid[4, 5].LinkedId = 1;
+    }
+
+    bool IsSwitch(TrackType t) => t == TrackType.SwitchLeft || t == TrackType.SwitchRight;
+    bool IsConfigurable(TrackType t) => IsSwitch(t) || t == TrackType.Signal || t == TrackType.Text;
+
+    void OnCellClick(int x, int y)
+    {
+        var cell = Grid[x, y];
+        if (IsEditMode)
+        {
+            if (SelectedTool != TrackType.Empty)
+            {
+                // If applying same tool to same cell, don't wipe text/id
+                if (cell.Type != SelectedTool)
+                {
+                    cell.Type = SelectedTool;
+                    cell.LinkedId = 0; cell.Rotation = 0; cell.Text = "";
+                    // Default text for new markers
+                    if (SelectedTool == TrackType.Text) cell.Text = "Label";
+                }
+
+                if (IsConfigurable(cell.Type)) SelectedCell = cell;
+            }
+            else
+            {
+                cell.Type = TrackType.Empty; cell.LinkedId = 0; cell.Text = ""; SelectedCell = null;
+            }
+        }
+        else
+        {
+            if (IsSwitch(cell.Type))
+            {
+                cell.State = cell.State == 0 ? 1 : 0;
+                TogglePhysicalSwitch(cell.LinkedId, cell.State);
+            }
+        }
+    }
+
+    void OnCellRightClick(int x, int y) { if (IsEditMode) Grid[x, y].Rotation = (Grid[x, y].Rotation + 90) % 360; }
+    void ClearBoard() { for (int x = 0; x < Cols; x++) for (int y = 0; y < Rows; y++) Grid[x, y] = new Cell(); }
+    void SaveLayout() { Console.WriteLine("Layout Saved"); }
+
+    string GetCellClass(Cell c) => c.Type switch
+    {
+        TrackType.Straight => "track-straight",
+        TrackType.Curve => "track-curve",
+        TrackType.Cross => "track-cross",
+        TrackType.SwitchLeft => "track-switch-left",
+        TrackType.SwitchRight => "track-switch-right",
+        TrackType.Signal => "track-signal",
+        TrackType.Sensor => "track-sensor",
+        _ => ""
+    };
+
+    int GetSwitchState(Cell c) => c.State;
+    string GetSignalColor(Cell c) => c.LinkedId == 100 ? "sig-red" : "sig-green";
+    void TogglePhysicalSwitch(int id, int state) { if (id != 0) Console.WriteLine($"Switch {id} -> {state}"); }
+}

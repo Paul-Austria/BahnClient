@@ -1,6 +1,8 @@
 ﻿<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">BahnClient</a>
+        <a class="navbar-brand" href="">
+            <i class="bi bi-train-freight-front me-2"></i>BahnClient
+        </a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -9,36 +11,73 @@
 
 <div class="@NavMenuCssClass" @onclick="ToggleNavMenu">
     <nav class="flex-column">
+
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="oi oi-home" aria-hidden="true"></span> Home
+                <i class="bi bi-house-door-fill me-2" aria-hidden="true"></i> Home
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3 mt-2">
+            <small class="text-uppercase text-white-50 fw-bold ps-3" style="font-size: 0.7rem;">Configuration</small>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="AddSw">
+                <i class="bi bi-signpost-split me-2" aria-hidden="true"></i> Add Switch
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="AddSw">
-                <span class="oi oi-plus" aria-hidden="true"></span> Add Switch
-            </NavLink>
             <NavLink class="nav-link" href="AddServo">
-                <span class="oi oi-plus" aria-hidden="true"></span> Add Servo
+                <i class="bi bi-gear-wide-connected me-2" aria-hidden="true"></i> Add Servo
             </NavLink>
+        </div>
+        <div class="nav-item px-3">
             <NavLink class="nav-link" href="AddSegment">
-                <span class="oi oi-plus" aria-hidden="true"></span> Add Segment
+                <i class="bi bi-bezier2 me-2" aria-hidden="true"></i> Add Segment
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3 mt-2">
+            <small class="text-uppercase text-white-50 fw-bold ps-3" style="font-size: 0.7rem;">Operation</small>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="traincockpit">
+                <i class="bi bi-train-front-fill me-2" aria-hidden="true"></i> Train Cockpit
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="commandcenter">
+                <i class="bi bi-speedometer2 me-2" aria-hidden="true"></i> Command Center
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="layoutcontrol">
+                <i class="bi bi-map-fill me-2" aria-hidden="true"></i> Layout Map
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3 mt-2">
+            <small class="text-uppercase text-white-50 fw-bold ps-3" style="font-size: 0.7rem;">Hardware & Auto</small>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="accessorycontrol">
+                <i class="bi bi-stoplights-fill me-2" aria-hidden="true"></i> Accessories
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="blockcontrol">
+                <i class="bi bi-shield-shaded me-2" aria-hidden="true"></i> Block Signals
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="ServoList">
-                <span class="oi oi-list-rich" aria-hidden="true"></span> List Servos
-            </NavLink>
-            <NavLink class="nav-link" href="traincockpit">
-                <span class="oi oi-list-rich" aria-hidden="true"></span> traincockpit
-            </NavLink>
-            <NavLink class="nav-link" href="accessorycontrol">
-                <span class="oi oi-list-rich" aria-hidden="true"></span> accessorycontrol
-            </NavLink>
-            <NavLink class="nav-link" href="commandcenter">
-                <span class="oi oi-list-rich" aria-hidden="true"></span> commandcenter
+                <i class="bi bi-list-columns-reverse me-2" aria-hidden="true"></i> Servo List
             </NavLink>
         </div>
+
     </nav>
 </div>
 

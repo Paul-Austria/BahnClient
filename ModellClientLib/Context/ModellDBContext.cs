@@ -23,6 +23,10 @@ namespace ModellClientLib.Context
         public DbSet<Switch> switches { get; set; }
         public DbSet<Servo> servos { get; set; }
         public DbSet<Segment> segments { get; set; }
+        public DbSet<Locomotive> Locomotives { get; set; }
+
+        public DbSet<LocoFunction> LocoFunctions { get; set; }
+
 
     }
 }

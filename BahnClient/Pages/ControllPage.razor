@@ -1,6 +1,8 @@
 ﻿@page "/traincockpit"
-@using System.Collections.Generic;
-@using System.Linq;
+@using ModellClientLib.Models
+@using ModellClientLib.Controllers
+@using System.Collections.Generic
+@using System.Linq
 
 <PageTitle>Train Cockpit</PageTitle>
 
@@ -120,7 +122,6 @@
                                         {
                                             if (isEditingFunctions)
                                             {
-                                                /* EDIT MODE: Show Delete badge */
                                                 <div class="position-relative">
                                                     <button class="btn btn-lg btn-outline-secondary disabled" style="opacity: 0.6;">
                                                         <small class="fw-bold d-block" style="font-size: 0.6em;">F@func.FIndex</small>
@@ -135,7 +136,6 @@
                                             }
                                             else
                                             {
-                                                /* NORMAL MODE: Click to toggle */
                                                 <button class="btn btn-lg @(func.IsActive ? "btn-primary shadow-sm" : "btn-outline-secondary")"
                                                         @onclick="() => ToggleFunction(func)">
                                                     @func.Name
@@ -152,12 +152,10 @@
                                             </div>
                                         }
                                     </div>
-
                                     @if (isEditingFunctions && ActiveLoco.Functions.Count == 0)
                                     {
                                         <p class="text-muted mt-2 small">Add a function (e.g., F0 "Lights") to get started.</p>
                                     }
-
                                 </div>
                             </div>
                         </div>
@@ -216,127 +214,167 @@
     int newFuncIndex = 0;
     string newFuncName = "";
 
+    // Load data from DB on start
     protected override void OnInitialized()
     {
-        // Mock Data
-        var loco1 = new Locomotive { ID = 1, Name = "Santa Fe #45", Address = 3 };
-        loco1.Functions.Add(new LocoFunction { FIndex = 0, Name = "💡 Lights", IsActive = false });
-        loco1.Functions.Add(new LocoFunction { FIndex = 1, Name = "🔔 Bell", IsActive = false });
-        loco1.Functions.Add(new LocoFunction { FIndex = 2, Name = "📢 Horn", IsActive = false });
+        // Subscribe to the global event
+        LocomotiveController.OnDataChanged += HandleDataChanged;
 
-        locomotives.Add(loco1);
+        RefreshList();
     }
 
-    // --- Logic ---
+    public void Dispose()
+    {
+        LocomotiveController.OnDataChanged -= HandleDataChanged;
+    }
+
+    void HandleDataChanged()
+    {
+        // Because this might happen on a background thread (MQTT), 
+        // we wrap it in InvokeAsync to safely update the UI.
+        InvokeAsync(() =>
+        {
+            RefreshList();
+            StateHasChanged(); // Tells Blazor to re-render the HTML
+        });
+    }
+
     void SelectLoco(Locomotive loco)
     {
         ActiveLoco = loco;
-        isEditingFunctions = false; // Reset edit mode when switching
+        isEditingFunctions = false;
     }
 
+    // --- CRUD Logic ---
     void SaveNewLoco()
     {
         if (!string.IsNullOrWhiteSpace(newLocoName) && newLocoAddr > 0)
         {
-            int newId = locomotives.Any() ? locomotives.Max(l => l.ID) + 1 : 1;
-            var newLoco = new Locomotive { ID = newId, Name = newLocoName, Address = newLocoAddr };
+            var newLoco = new Locomotive { Name = newLocoName, Address = newLocoAddr };
 
-            // Default functions
-            newLoco.Functions.Add(new LocoFunction { FIndex = 0, Name = "Light" });
+            // Add default light function
+            newLoco.Functions.Add(new LocoFunction { FIndex = 0, Name = "Light", IsActive = false });
 
-            locomotives.Add(newLoco);
-            ActiveLoco = newLoco;
+            // Persist to DB
+            LocomotiveController.AddLocomotive(newLoco);
 
-            newLocoName = ""; isAddingLoco = false;
+            RefreshList();
+
+            // Select the new loco
+            ActiveLoco = locomotives.LastOrDefault();
+            newLocoName = "";
+            isAddingLoco = false;
         }
+    }
+
+    // --- Driving Logic ---
+    async Task UpdateSpeed(ChangeEventArgs e)
+    {
+        if (ActiveLoco != null && int.TryParse(e.Value?.ToString(), out int speed))
+        {
+            ActiveLoco.Speed = speed;
+            // Async call to Controller (Updates DB + MQTT)
+            await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
+        }
+    }
+
+    async Task SetDirection(int dir)
+    {
+        if (ActiveLoco != null)
+        {
+            ActiveLoco.Direction = dir;
+            await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
+        }
+    }
+
+    async Task EmergencyStop()
+    {
+        if (ActiveLoco != null)
+        {
+            ActiveLoco.Speed = 0;
+            // Use the specific Emergency method if you prefer, or generic Update
+            await LocomotiveController.EmergencyStopAsync(ActiveLoco.ID);
+            // Force UI update since speed changed externally by controller logic
+            StateHasChanged();
+        }
+    }
+
+
+
+    void RefreshList()
+    {
+        // Store the ID of the currently selected train
+        int? selectedLocoId = ActiveLoco?.ID;
+
+        // Fetch fresh data from DB
+        locomotives = LocomotiveController.GetLocomotives().ToList();
+
+        // Try to re-select the active train with the fresh data
+        if (selectedLocoId.HasValue)
+        {
+            ActiveLoco = locomotives.FirstOrDefault(l => l.ID == selectedLocoId.Value);
+
+            // If the train was deleted by someone else, deselect it
+            if (ActiveLoco == null)
+            {
+                // Optional: switch back to roster view
+            }
+        }
+    }
+
+    // --- Function Logic ---
+    async Task ToggleFunction(LocoFunction func)
+    {
+        func.IsActive = !func.IsActive;
+        // Call controller for specific function update
+        await LocomotiveController.UpdateFunctionStateAsync(func);
     }
 
     void ToggleEditFunctions()
     {
         isEditingFunctions = !isEditingFunctions;
-        // Reset inputs
         newFuncIndex = 0;
         newFuncName = "";
     }
 
-    void AddFunction()
+    async Task AddFunction()
     {
         if (ActiveLoco != null && !string.IsNullOrWhiteSpace(newFuncName))
         {
-            // Prevent duplicate F-numbers
+            // Check for duplicate F-Index
             if (!ActiveLoco.Functions.Any(f => f.FIndex == newFuncIndex))
             {
-                ActiveLoco.Functions.Add(new LocoFunction
+                var newFunc = new LocoFunction
                     {
                         FIndex = newFuncIndex,
                         Name = newFuncName,
-                        IsActive = false
-                    });
-                newFuncName = ""; // Clear name, keep index or increment?
-                newFuncIndex++;   // Auto-increment for convenience
+                        IsActive = false,
+                        LocomotiveID = ActiveLoco.ID
+                    };
+
+                ActiveLoco.Functions.Add(newFunc);
+
+                // Saving the Parent Loco will cascade insert the new child if configured,
+                // or we rely on EF Core tracking.
+                await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
+
+                // Reload to ensure we get the generated ID back
+                RefreshList();
+
+                newFuncName = "";
+                newFuncIndex++;
             }
         }
     }
 
-    void RemoveFunction(LocoFunction func)
+    async Task RemoveFunction(LocoFunction func)
     {
         if (ActiveLoco != null)
         {
             ActiveLoco.Functions.Remove(func);
+            await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
+
+            RefreshList();
         }
-    }
-
-    // --- Driving Logic ---
-    void UpdateSpeed(ChangeEventArgs e)
-    {
-        if (ActiveLoco != null && int.TryParse(e.Value?.ToString(), out int speed))
-        {
-            ActiveLoco.Speed = speed;
-            TransmitData();
-        }
-    }
-
-    void SetDirection(int dir)
-    {
-        if (ActiveLoco != null) { ActiveLoco.Direction = dir; TransmitData(); }
-    }
-
-    void ToggleFunction(LocoFunction func)
-    {
-        func.IsActive = !func.IsActive;
-        TransmitFunction(func.FIndex, func.IsActive);
-    }
-
-    void EmergencyStop()
-    {
-        if (ActiveLoco != null) { ActiveLoco.Speed = 0; TransmitData(); }
-    }
-
-    // --- MQTT Stubs ---
-    void TransmitData()
-    {
-        // TODO: Send ActiveLoco.Address, ActiveLoco.Speed, ActiveLoco.Direction
-    }
-    void TransmitFunction(int fIdx, bool state)
-    {
-        // TODO: Send ActiveLoco.Address, fIdx, state
-    }
-
-    // --- Models ---
-    public class Locomotive
-    {
-        public int ID { get; set; }
-        public string Name { get; set; } = "";
-        public int Address { get; set; }
-        public int Speed { get; set; }
-        public int Direction { get; set; } = 1;
-        public List<LocoFunction> Functions { get; set; } = new List<LocoFunction>();
-    }
-
-    public class LocoFunction
-    {
-        public int FIndex { get; set; } // 0-28
-        public string Name { get; set; } = "Func";
-        public bool IsActive { get; set; }
     }
 }

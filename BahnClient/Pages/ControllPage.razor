@@ -1,8 +1,11 @@
 ﻿@page "/traincockpit"
 @using ModellClientLib.Models
 @using ModellClientLib.Controllers
+@using ModellClientLib.Mqtt
 @using System.Collections.Generic
 @using System.Linq
+@using System.Text.Json
+@implements IDisposable
 
 <PageTitle>Train Cockpit</PageTitle>
 
@@ -10,6 +13,21 @@
     <div class="row h-100">
 
         <div class="col-md-4 col-lg-3 d-flex flex-column h-100">
+
+            <div class="mb-3">
+                <button class="btn btn-lg w-100 fw-bold shadow-sm @(isTrackPowerOn ? "btn-success" : "btn-danger")"
+                        style="height: 60px; transition: all 0.3s;"
+                        @onclick="TogglePower">
+                    @if (isTrackPowerOn)
+                    {
+                        <span>⚡ TRACK POWER: ON</span>
+                    }
+                    else
+                    {
+                        <span>🚫 TRACK POWER: OFF</span>
+                    }
+                </button>
+            </div>
 
             <div class="p-3 mb-3 bg-white rounded shadow-sm d-flex justify-content-between align-items-center">
                 <h5 class="m-0 fw-bold text-secondary">🚂 Fleet Roster</h5>
@@ -79,13 +97,13 @@
                         </div>
 
                         <div class="flex-grow-1 d-flex flex-column justify-content-center my-4">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span class="h4 text-muted">0</span>
-                                <span class="h1 fw-bold text-primary">@ActiveLoco.Speed <small class="fs-6 text-muted">/ 127</small></span>
-                                <span class="h4 text-muted">127</span>
+                            <div class="d-flex justify-content-between mb-2 px-1">
+                                <span class="h5 fw-bold text-muted">STOP</span>
+                                <span class="h1 fw-bold" style="color: #444;">@ActiveLoco.Speed <small class="fs-6 text-muted">/ 127</small></span>
+                                <span class="h5 fw-bold text-danger">MAX</span>
                             </div>
-                            <input type="range" class="form-range custom-range" min="0" max="127"
-                                   style="height: 3rem;"
+
+                            <input type="range" class="throttle-slider" min="0" max="127"
                                    value="@ActiveLoco.Speed"
                                    @onchange="@((ChangeEventArgs e) => UpdateSpeed(e))"
                                    @oninput="@((ChangeEventArgs e) => UpdateSpeed(e))" />
@@ -152,10 +170,6 @@
                                             </div>
                                         }
                                     </div>
-                                    @if (isEditingFunctions && ActiveLoco.Functions.Count == 0)
-                                    {
-                                        <p class="text-muted mt-2 small">Add a function (e.g., F0 "Lights") to get started.</p>
-                                    }
                                 </div>
                             </div>
                         </div>
@@ -175,6 +189,7 @@
 </div>
 
 <style>
+    /* BASIC STYLES */
     .ring-active {
         border-left: 5px solid #0d6efd !important;
         transform: scale(1.02);
@@ -184,42 +199,92 @@
         border-style: dashed !important;
     }
 
-    .custom-range::-webkit-slider-thumb {
-        width: 30px;
-        height: 30px;
-        background: #0d6efd;
+    .throttle-slider {
+        -webkit-appearance: none;
+        width: 100%;
+        background: transparent;
+        height: 60px;
         cursor: pointer;
-        margin-top: -12px;
+        opacity: 1; 
     }
 
-    .custom-range::-webkit-slider-runnable-track {
-        height: 10px;
-        background: #dee2e6;
-        border-radius: 5px;
-    }
+        .throttle-slider:focus {
+            outline: none; 
+        }
+
+        /* --- CHROME / SAFARI / EDGE --- */
+
+        /* The Track */
+        .throttle-slider::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 24px;
+            cursor: pointer;
+            /* Modern Gradient Track: Green (Slow) -> Yellow -> Red (Fast) */
+            background: linear-gradient(90deg, #198754 0%, #ffc107 50%, #dc3545 100%);
+            border-radius: 12px;
+            box-shadow: inset 0px 2px 4px rgba(0,0,0,0.3);
+            border: 1px solid #888;
+        }
+
+        /* The Handle (Thumb) */
+        .throttle-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 48px;
+            width: 32px;
+            border-radius: 6px;
+            background: linear-gradient(to bottom, #e9ecef, #adb5bd, #6c757d);
+            border: 1px solid #495057;
+            box-shadow: 0px 4px 8px rgba(0,0,0,0.5);
+            margin-top: -13px; 
+            background-image: repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(0,0,0,0.15) 4px, rgba(0,0,0,0.15) 6px);
+            opacity: 1 !important;
+        }
+
+        .throttle-slider:active::-webkit-slider-thumb {
+            transform: none;
+            background: linear-gradient(to bottom, #e9ecef, #adb5bd, #6c757d);
+        }
+
+        .throttle-slider::-moz-range-track {
+            width: 100%;
+            height: 24px;
+            cursor: pointer;
+            background: linear-gradient(90deg, #198754 0%, #ffc107 50%, #dc3545 100%);
+            border-radius: 12px;
+            box-shadow: inset 0px 2px 4px rgba(0,0,0,0.3);
+            border: 1px solid #888;
+        }
+
+        .throttle-slider::-moz-range-thumb {
+            height: 48px;
+            width: 32px;
+            border: 1px solid #495057;
+            border-radius: 6px;
+            /* Same solid gradient as Webkit */
+            background: linear-gradient(to bottom, #e9ecef, #adb5bd, #6c757d);
+            box-shadow: 0px 4px 8px rgba(0,0,0,0.5);
+            cursor: pointer;
+            opacity: 1 !important;
+            background-image: repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(0,0,0,0.15) 4px, rgba(0,0,0,0.15) 6px);
+        }
 </style>
 
 @code {
-    // --- Data Source ---
     List<Locomotive> locomotives = new List<Locomotive>();
     Locomotive? ActiveLoco;
 
-    // --- UI States ---
+    bool isTrackPowerOn = false;
+
     bool isAddingLoco = false;
     string newLocoName = "";
     int newLocoAddr = 3;
-
-    // --- Function Editing States ---
     bool isEditingFunctions = false;
     int newFuncIndex = 0;
     string newFuncName = "";
 
-    // Load data from DB on start
     protected override void OnInitialized()
     {
-        // Subscribe to the global event
         LocomotiveController.OnDataChanged += HandleDataChanged;
-
         RefreshList();
     }
 
@@ -230,50 +295,49 @@
 
     void HandleDataChanged()
     {
-        // Because this might happen on a background thread (MQTT), 
-        // we wrap it in InvokeAsync to safely update the UI.
-        InvokeAsync(() =>
-        {
-            RefreshList();
-            StateHasChanged(); // Tells Blazor to re-render the HTML
-        });
+        InvokeAsync(() => { RefreshList(); StateHasChanged(); });
     }
 
-    void SelectLoco(Locomotive loco)
+    void RefreshList()
     {
-        ActiveLoco = loco;
-        isEditingFunctions = false;
+        int? selectedLocoId = ActiveLoco?.ID;
+        locomotives = LocomotiveController.GetLocomotives().ToList();
+        if (selectedLocoId.HasValue)
+        {
+            ActiveLoco = locomotives.FirstOrDefault(l => l.ID == selectedLocoId.Value);
+        }
     }
 
-    // --- CRUD Logic ---
+    public class SystemPowerCommand { public bool Power { get; set; } }
+
+    async Task TogglePower()
+    {
+        isTrackPowerOn = !isTrackPowerOn;
+        var cmd = new SystemPowerCommand { Power = isTrackPowerOn };
+        string payload = JsonSerializer.Serialize(cmd);
+        await MqttClientSingleton.Instance.Transmit("trains/command", payload);
+    }
+
+    void SelectLoco(Locomotive loco) { ActiveLoco = loco; isEditingFunctions = false; }
+
     void SaveNewLoco()
     {
         if (!string.IsNullOrWhiteSpace(newLocoName) && newLocoAddr > 0)
         {
             var newLoco = new Locomotive { Name = newLocoName, Address = newLocoAddr };
-
-            // Add default light function
             newLoco.Functions.Add(new LocoFunction { FIndex = 0, Name = "Light", IsActive = false });
-
-            // Persist to DB
             LocomotiveController.AddLocomotive(newLoco);
-
             RefreshList();
-
-            // Select the new loco
             ActiveLoco = locomotives.LastOrDefault();
-            newLocoName = "";
-            isAddingLoco = false;
+            newLocoName = ""; isAddingLoco = false;
         }
     }
 
-    // --- Driving Logic ---
     async Task UpdateSpeed(ChangeEventArgs e)
     {
         if (ActiveLoco != null && int.TryParse(e.Value?.ToString(), out int speed))
         {
             ActiveLoco.Speed = speed;
-            // Async call to Controller (Updates DB + MQTT)
             await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
         }
     }
@@ -283,86 +347,35 @@
         if (ActiveLoco != null)
         {
             ActiveLoco.Direction = dir;
+            ActiveLoco.Speed = 0; 
             await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
         }
     }
 
     async Task EmergencyStop()
     {
-        if (ActiveLoco != null)
-        {
-            ActiveLoco.Speed = 0;
-            // Use the specific Emergency method if you prefer, or generic Update
-            await LocomotiveController.EmergencyStopAsync(ActiveLoco.ID);
-            // Force UI update since speed changed externally by controller logic
-            StateHasChanged();
-        }
+        if (ActiveLoco != null) { ActiveLoco.Speed = 0; await LocomotiveController.EmergencyStopAsync(ActiveLoco.ID); StateHasChanged(); }
     }
 
-
-
-    void RefreshList()
-    {
-        // Store the ID of the currently selected train
-        int? selectedLocoId = ActiveLoco?.ID;
-
-        // Fetch fresh data from DB
-        locomotives = LocomotiveController.GetLocomotives().ToList();
-
-        // Try to re-select the active train with the fresh data
-        if (selectedLocoId.HasValue)
-        {
-            ActiveLoco = locomotives.FirstOrDefault(l => l.ID == selectedLocoId.Value);
-
-            // If the train was deleted by someone else, deselect it
-            if (ActiveLoco == null)
-            {
-                // Optional: switch back to roster view
-            }
-        }
-    }
-
-    // --- Function Logic ---
     async Task ToggleFunction(LocoFunction func)
     {
         func.IsActive = !func.IsActive;
-        // Call controller for specific function update
         await LocomotiveController.UpdateFunctionStateAsync(func);
     }
 
-    void ToggleEditFunctions()
-    {
-        isEditingFunctions = !isEditingFunctions;
-        newFuncIndex = 0;
-        newFuncName = "";
-    }
+    void ToggleEditFunctions() { isEditingFunctions = !isEditingFunctions; newFuncIndex = 0; newFuncName = ""; }
 
     async Task AddFunction()
     {
         if (ActiveLoco != null && !string.IsNullOrWhiteSpace(newFuncName))
         {
-            // Check for duplicate F-Index
             if (!ActiveLoco.Functions.Any(f => f.FIndex == newFuncIndex))
             {
-                var newFunc = new LocoFunction
-                    {
-                        FIndex = newFuncIndex,
-                        Name = newFuncName,
-                        IsActive = false,
-                        LocomotiveID = ActiveLoco.ID
-                    };
-
+                var newFunc = new LocoFunction { FIndex = newFuncIndex, Name = newFuncName, IsActive = false, LocomotiveID = ActiveLoco.ID };
                 ActiveLoco.Functions.Add(newFunc);
-
-                // Saving the Parent Loco will cascade insert the new child if configured,
-                // or we rely on EF Core tracking.
                 await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
-
-                // Reload to ensure we get the generated ID back
                 RefreshList();
-
-                newFuncName = "";
-                newFuncIndex++;
+                newFuncName = ""; newFuncIndex++;
             }
         }
     }
@@ -373,7 +386,6 @@
         {
             ActiveLoco.Functions.Remove(func);
             await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
-
             RefreshList();
         }
     }

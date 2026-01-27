@@ -1,6 +1,6 @@
 ﻿@page "/blockcontrol"
-@using System.Text.Json
-@using System.Text.Json.Serialization
+@using ModellClientLib.Models
+@using ModellClientLib.Controllers
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -8,244 +8,314 @@
 
 <div class="container-fluid vh-100 py-3" style="background-color: #f0f2f5;">
     <div class="row h-100">
-
         <div class="col-md-4 col-xl-3 d-flex flex-column gap-3">
-
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white fw-bold text-primary">
                     <i class="bi bi-plus-square"></i> Add Block Area
                 </div>
                 <div class="card-body">
+                    <div class="mb-3">
+                        <label class="small text-muted fw-bold">Sensing Type</label>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="btnradio" id="typeMag" autocomplete="off"
+                                       checked="@(newBlockType == BlockType.Magnet)"
+                                       @onchange="@(() => newBlockType = BlockType.Magnet)">
+                                <label class="btn btn-outline-primary" for="typeMag">Magnet</label>
+
+                                <input type="radio" class="btn-check" name="btnradio" id="typeCur" autocomplete="off"
+                                       checked="@(newBlockType == BlockType.CurrentSensor)"
+                                       @onchange="@(() => newBlockType = BlockType.CurrentSensor)">
+                                <label class="btn btn-outline-primary" for="typeCur">Current</label>
+                            </div>
+
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="btnradio" id="typeSpot" autocomplete="off"
+                                       checked="@(newBlockType == BlockType.OnePointCurrentSensor)"
+                                       @onchange="@(() => newBlockType = BlockType.OnePointCurrentSensor)">
+                                <label class="btn btn-outline-secondary" for="typeSpot">📍 Spot / Event Sensor</label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-2">
                         <label class="small text-muted">Controller Topic</label>
                         <input class="form-control mb-2" placeholder="e.g. esp32_main" @bind="newBlockTopic" />
 
                         <label class="small text-muted">Block Name</label>
-                        <input class="form-control" placeholder="e.g. Sector 1" @bind="newBlockName" />
+                        <input class="form-control" placeholder="e.g. Station Stop Point" @bind="newBlockName" />
                     </div>
+
                     <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <label class="small text-muted">Sensor A</label>
-                            <input type="number" class="form-control" placeholder="Pin" @bind="newBlockPinA" />
+                        <div class="col-12">
+                            <label class="small text-muted">@(newBlockType == BlockType.Magnet ? "Sensor A (Entry)" : "Sensor Pin")</label>
+                            <input type="number" class="form-control" placeholder="GPIO Pin" @bind="newBlockPinA" />
                         </div>
-                        <div class="col-6">
-                            <label class="small text-muted">Sensor B</label>
-                            <input type="number" class="form-control" placeholder="Pin" @bind="newBlockPinB" />
-                        </div>
+
+                        @if (newBlockType == BlockType.Magnet)
+                        {
+                            <div class="col-12">
+                                <label class="small text-muted">Sensor B (Exit)</label>
+                                <input type="number" class="form-control" placeholder="GPIO Pin" @bind="newBlockPinB" />
+                            </div>
+                        }
                     </div>
-                    <button class="btn btn-primary w-100" @onclick="AddBlock">Create Block</button>
+
+                    <button class="btn btn-primary w-100" @onclick="AddBlock">
+                        <i class="bi bi-save"></i> Create Block
+                    </button>
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white fw-bold text-success">
-                    <i class="bi bi-geo-alt"></i> Add Sensor Point
-                </div>
-                <div class="card-body">
-                    <div class="mb-2">
-                        <label class="small text-muted">Controller Topic</label>
-                        <input class="form-control mb-2" placeholder="e.g. esp32_yard" @bind="newPointTopic" />
-
-                        <label class="small text-muted">Point Name</label>
-                        <input class="form-control" placeholder="e.g. Station Stop" @bind="newPointName" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="small text-muted">Sensor Pin</label>
-                        <input type="number" class="form-control" placeholder="Pin" @bind="newPointPin" />
-                    </div>
-                    <button class="btn btn-success w-100" @onclick="AddPoint">Create Point</button>
-                </div>
+            <div class="alert alert-info small border-0 shadow-sm">
+                <i class="bi bi-info-circle-fill me-1"></i>
+                <strong>Tip:</strong> Spot sensors are useful for precise stopping points (e.g., Reed switches) where direction doesn't matter.
             </div>
         </div>
 
         <div class="col-md-8 col-xl-9 overflow-auto">
-            <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-stoplights"></i> Signal Blocks</h5>
+            <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-stoplights"></i> Track Blocks</h5>
 
-            <div class="row g-3 mb-5">
-                @foreach (var block in Blocks)
-                {
-                    <div class="col-md-6 col-xl-4">
-                        <div class="card h-100 border-0 shadow-sm transition-card">
-                            <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
-                                <span class="badge bg-dark">ID: @block.ID</span>
-                                <small class="text-muted" style="font-size:0.7em;">@block.ControllerTopic</small>
-                            </div>
-                            <div class="card-body d-flex flex-column">
-                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                    <div>
-                                        <h5 class="fw-bold d-inline">@block.Name</h5>
-                                        <div class="small text-muted mt-1">Pins: @block.PinA <i class="bi bi-arrow-right"></i> @block.PinB</div>
+            @if (Blocks.Count == 0)
+            {
+                <div class="text-center text-muted mt-5">
+                    <i class="bi bi-train-freight display-1 opacity-25"></i>
+                    <p class="mt-3">No blocks defined yet.</p>
+                </div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    @foreach (var block in Blocks)
+                    {
+                        <div class="col-md-6 col-xl-4">
+                            <div class="card h-100 border-0 shadow-sm transition-card">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        @if (block.Type == BlockType.Magnet)
+                                        {
+                                            <span class="badge bg-light text-dark border">🧲 Magnet</span>
+                                        }
+                                        else if (block.Type == BlockType.CurrentSensor)
+                                        {
+                                            <span class="badge bg-light text-dark border">⚡ Current</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-light text-primary border border-primary">📍 Spot</span>
+                                        }
+                                        <small class="text-muted">#@block.ID</small>
                                     </div>
-                                    <div class="signal-box @(block.IsOccupied ? "bg-danger shadow-red" : "bg-success shadow-green")">
-                                        @(block.IsOccupied ? "STOP" : "FREE")
+                                    <div class="d-flex align-items-center gap-2">
+                                        <small class="text-muted text-truncate" style="max-width: 100px;">@block.ControllerTopic</small>
+                                        <button class="btn btn-sm btn-link text-danger p-0" @onclick="() => DeleteBlock(block)" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
                                     </div>
                                 </div>
-                                <div class="alert @(block.IsOccupied ? "alert-warning" : "alert-light") d-flex justify-content-between align-items-center mb-3">
-                                    <span><i class="bi bi-magnet-fill me-2"></i>Count: <strong>@block.MagnetCount</strong></span>
-                                    @if (block.IsOccupied)
+
+                                <div class="card-body d-flex flex-column">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <h5 class="fw-bold m-0 text-truncate" style="max-width: 180px;">@block.Name</h5>
+                                            <small class="text-muted">
+                                                Pin @block.PinA @(block.PinB.HasValue ? $" / {block.PinB}" : "")
+                                            </small>
+                                        </div>
+                                        <div class="status-pill @(block.IsOccupied ? "bg-danger shadow-red animate-pulse" : "bg-success shadow-green")">
+                                            @(block.IsOccupied ? (block.Type == BlockType.OnePointCurrentSensor ? "TRIGGERED" : "OCCUPIED") : "FREE")
+                                        </div>
+                                    </div>
+
+                                    @if (block.Type == BlockType.Magnet)
                                     {
-                                        <span class="badge bg-warning text-dark animate-pulse">Occupied</span>
+                                        <div class="bg-light rounded p-2 mb-3 border">
+                                            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                                                <span class="small fw-bold text-secondary" style="font-size: 0.7em;">DIRECTION</span>
+                                                @if (block.IsOccupied)
+                                                {
+                                                    <span class="badge @GetDirectionBadgeClass(block.Direction)">
+                                                        @if (block.Direction == BlockDirection.Forward)
+                                                        {
+                                                            <span>A <i class="bi bi-arrow-right"></i> B</span>
+                                                        }
+                                                        else if (block.Direction == BlockDirection.Reverse)
+                                                        {
+                                                            <span>A <i class="bi bi-arrow-left"></i> B</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>Unknown</span>
+                                                        }
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted small">-</span>
+                                                }
+                                            </div>
+
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="small fw-bold text-secondary" style="font-size: 0.7em;">AXLE COUNT</span>
+                                                <span class="fw-bold font-monospace bg-white border px-2 rounded">@block.MagnetCount</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-auto d-flex gap-2">
+                                            @if (block.IsOccupied)
+                                            {
+                                                <button class="btn btn-outline-warning btn-sm flex-grow-1" @onclick="() => FlipDirection(block)">
+                                                    <i class="bi bi-arrow-left-right"></i> Flip
+                                                </button>
+                                            }
+                                            <button class="btn btn-outline-secondary btn-sm" @onclick="() => ResetBlock(block)">Reset</button>
+                                            <button class="btn btn-outline-secondary text-danger btn-sm" @onclick="() => DeleteBlock(block)">Delete</button>
+
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="alert @(block.IsOccupied ? "alert-warning" : "alert-light border") py-3 mb-0 small text-center flex-grow-1 d-flex align-items-center justify-content-center">
+                                            @if (block.IsOccupied)
+                                            {
+                                                <span><i class="bi bi-lightning-charge-fill text-warning"></i> Signal Active</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">No Signal</span>
+                                            }
+                                        </div>
+                                        <div class="mt-2 text-end">
+                                            <button class="btn btn-link btn-sm text-muted text-decoration-none" @onclick="() => ResetBlock(block)">Force Clear</button>
+                                            <button class="btn btn-link btn-sm  text-danger" @onclick="() => DeleteBlock(block)">Delete</button>
+                                        </div>
                                     }
                                 </div>
-                                <button class="btn btn-outline-secondary btn-sm mt-auto" @onclick="() => ResetBlock(block)">
-                                    <i class="bi bi-arrow-counterclockwise"></i> Reset
-                                </button>
                             </div>
                         </div>
-                    </div>
-                }
-            </div>
-
-            <h5 class="fw-bold text-secondary mb-3"><i class="bi bi-bullseye"></i> Sensor Points</h5>
-            <div class="row g-3">
-                @foreach (var point in Points)
-                {
-                    <div class="col-md-4 col-xl-3">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-header bg-white py-1">
-                                <small class="text-muted" style="font-size:0.7em;">ID: @point.ID | @point.ControllerTopic</small>
-                            </div>
-                            <div class="card-body d-flex align-items-center justify-content-between">
-                                <div>
-                                    <h6 class="fw-bold mb-0">@point.Name</h6>
-                                    <small class="text-muted">Pin: @point.Pin</small>
-                                </div>
-                                <div class="@(point.IsTriggered ? "text-danger" : "text-secondary")">
-                                    <i class="bi bi-record-circle-fill fs-4 @(point.IsTriggered ? "animate-ping" : "")"></i>
-                                </div>
-                            </div>
-                            <div class="card-footer bg-white border-0 pt-0">
-                                <button class="btn btn-link btn-sm text-decoration-none p-0 text-muted" @onclick="() => ResetPoint(point)">Reset</button>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
+                    }
+                </div>
+            }
         </div>
     </div>
 </div>
 
 <style>
-    .signal-box {
-        width: 60px;
-        height: 30px;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    .status-pill {
+        padding: 4px 12px;
+        border-radius: 20px;
         color: white;
         font-weight: bold;
-        font-size: 0.7em;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
     }
 
     .shadow-red {
-        box-shadow: 0 0 15px rgba(220, 53, 69, 0.6);
+        box-shadow: 0 0 10px rgba(220, 53, 69, 0.4);
     }
 
     .shadow-green {
-        box-shadow: 0 0 15px rgba(25, 135, 84, 0.6);
+        box-shadow: 0 0 10px rgba(25, 135, 84, 0.4);
     }
 
     .animate-pulse {
-        animation: pulse 2s infinite;
+        animation: pulse-red 2s infinite;
     }
 
-    @@keyframes pulse {
+    @@keyframes pulse-red {
         0% {
-            opacity: 1;
+            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
         }
 
-        50% {
-            opacity: 0.5;
+        70% {
+            box-shadow: 0 0 0 6px rgba(220, 53, 69, 0);
         }
 
         100% {
-            opacity: 1;
+            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
         }
     }
 
-    .animate-ping {
-        animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+    .transition-card {
+        transition: transform 0.2s;
     }
 
-    @@keyframes ping {
-        75%, 100% {
-            transform: scale(1.5);
-            opacity: 0;
+        .transition-card:hover {
+            transform: translateY(-2px);
         }
-    }
 </style>
 
 @code {
-    // --- UPDATED MODELS ---
-    public class BlockArea
-    {
-        public int ID { get; set; }
-        public string Name { get; set; } = "";
-        public string ControllerTopic { get; set; } = "layout/default";
-        public int PinA { get; set; }
-        public int PinB { get; set; }
-        public int MagnetCount { get; set; }
-        public bool IsOccupied { get; set; }
-    }
-
-    public class SensorPoint
-    {
-        public int ID { get; set; }
-        public string Name { get; set; } = "";
-        public string ControllerTopic { get; set; } = "layout/default";
-        public int Pin { get; set; }
-        public bool IsTriggered { get; set; }
-    }
-
     List<BlockArea> Blocks = new List<BlockArea>();
-    List<SensorPoint> Points = new List<SensorPoint>();
 
-    // Inputs
-    string newBlockName = ""; string newBlockTopic = "esp32_1"; int newBlockPinA; int newBlockPinB;
-    string newPointName = ""; string newPointTopic = "esp32_1"; int newPointPin;
+    BlockType newBlockType = BlockType.Magnet;
+    string newBlockName = "";
+    string newBlockTopic = "esp32_1";
+    int newBlockPinA;
+    int? newBlockPinB;
 
     protected override void OnInitialized()
     {
-        // Mock Data
-        Blocks.Add(new BlockArea { ID = 1, Name = "Main Line East", ControllerTopic = "esp32_main", PinA = 12, PinB = 14, MagnetCount = 1, IsOccupied = true });
-        Blocks.Add(new BlockArea { ID = 2, Name = "Siding 1", ControllerTopic = "esp32_yard", PinA = 27, PinB = 26, MagnetCount = 0, IsOccupied = false });
-        Points.Add(new SensorPoint { ID = 1, Name = "Station Halt", ControllerTopic = "esp32_main", Pin = 33, IsTriggered = false });
+        BlockController.OnDataChanged += RefreshUI;
+        RefreshUI();
     }
 
-    void AddBlock()
+    public void Dispose()
+    {
+        BlockController.OnDataChanged -= RefreshUI;
+    }
+
+    void RefreshUI()
+    {
+        InvokeAsync(() =>
+        {
+            Blocks = BlockController.GetBlocks();
+            StateHasChanged();
+        });
+    }
+
+    async Task AddBlock()
     {
         if (!string.IsNullOrWhiteSpace(newBlockName))
         {
-            int nextId = Blocks.Any() ? Blocks.Max(b => b.ID) + 1 : 1;
-            var b = new BlockArea { ID = nextId, Name = newBlockName, ControllerTopic = newBlockTopic, PinA = newBlockPinA, PinB = newBlockPinB };
-            Blocks.Add(b);
+            var b = new BlockArea
+                {
+                    Name = newBlockName,
+                    ControllerTopic = newBlockTopic,
+                    Type = newBlockType,
+                    PinA = newBlockPinA,
+                    // Only Magnet uses PinB, others use PinA only
+                    PinB = (newBlockType == BlockType.Magnet) ? newBlockPinB : null
+                };
 
-            // MQTT Command: To specific controller topic
-            var payload = new { id = b.ID, name = b.Name, A = b.PinA, B = b.PinB };
-            string topic = $"{b.ControllerTopic}/control/add_block";
-            // MqttClient.Publish(topic, json);
+            await BlockController.AddBlockAsync(b);
 
             newBlockName = "";
+            // Keep Pins/Topic for easy sequential entry
         }
     }
 
-    void ResetBlock(BlockArea b)
+    async Task FlipDirection(BlockArea b)
     {
-        b.MagnetCount = 0; b.IsOccupied = false;
-        string topic = $"{b.ControllerTopic}/control/reset_block";
-        // MqttClient.Publish(topic, payload);
+        await BlockController.FlipDirectionAsync(b.ID);
     }
 
-    void AddPoint()
+    async Task ResetBlock(BlockArea b)
     {
-        int nextId = Points.Any() ? Points.Max(p => p.ID) + 1 : 1;
-        var p = new SensorPoint { ID = nextId, Name = newPointName, ControllerTopic = newPointTopic, Pin = newPointPin };
-        Points.Add(p);
-        // MQTT Publish...
+        await BlockController.ResetBlockAsync(b.ID);
     }
 
-    void ResetPoint(SensorPoint p) { p.IsTriggered = false; }
-    public void Dispose() { }
+    async Task DeleteBlock(BlockArea b)
+    {
+        await BlockController.DeleteBlockAsync(b.ID);
+    }
+
+    string GetDirectionBadgeClass(BlockDirection dir) => dir switch
+    {
+        BlockDirection.Forward => "bg-info text-dark",
+        BlockDirection.Reverse => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
 }

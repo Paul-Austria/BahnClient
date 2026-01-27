@@ -99,7 +99,6 @@ void setup() {
   // Debug Serial (USB)
   Serial.begin(115200);
   
-  // DCC-EX Hardware Serial (Pin D4)
   // 115200 is standard for DCC-EX
   Serial1.begin(115200); 
 
@@ -107,7 +106,6 @@ void setup() {
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
   
-  // Larger buffer for MQTT packets
   client.setBufferSize(512);
 }
 

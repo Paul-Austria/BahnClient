@@ -1,0 +1,87 @@
+﻿@page "/modules"
+@using ModellClientLib.Models
+@using ModellClientLib.Controllers
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>System Status</PageTitle>
+
+<div class="container py-4">
+    <h3 class="mb-4"><i class="bi bi-cpu"></i> Controller Status</h3>
+
+    <div class="row g-4">
+        @foreach (var module in Modules)
+        {
+            <div class="col-md-6 col-xl-4">
+                <div class="card shadow-sm h-100 @(module.IsOnline ? "border-success" : "border-danger")" style="border-width: 0 0 0 4px;">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h5 class="m-0 fw-bold">@module.ControllerTopic</h5>
+                        @if (module.IsOnline)
+                        {
+                            <span class="badge bg-success">ONLINE</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-danger">OFFLINE</span>
+                        }
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            <i class="bi bi-clock-history"></i> Last seen: @module.LastSeen.ToString("HH:mm:ss")
+                        </p>
+
+                        <h6 class="border-bottom pb-2 mb-2">Assigned Blocks</h6>
+                        @{
+                            var assignedBlocks = AllBlocks.Where(b => b.ControllerTopic == module.ControllerTopic).ToList();
+                        }
+
+                        @if (assignedBlocks.Any())
+                        {
+                            <ul class="list-group list-group-flush small">
+                                @foreach (var block in assignedBlocks)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <span>@block.Name</span>
+                                        <span class="badge bg-light text-dark border">#@block.ID</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <div class="text-muted small fst-italic">No blocks assigned yet.</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    List<Module> Modules = new List<Module>();
+    List<BlockArea> AllBlocks = new List<BlockArea>();
+
+    protected override void OnInitialized()
+    {
+        ModuleController.OnDataChanged += Refresh;
+        BlockController.OnDataChanged += Refresh;
+        Refresh();
+    }
+
+    public void Dispose()
+    {
+        ModuleController.OnDataChanged -= Refresh;
+        BlockController.OnDataChanged -= Refresh;
+    }
+
+    void Refresh()
+    {
+        InvokeAsync(() =>
+        {
+            Modules = ModuleController.GetModules();
+            AllBlocks = BlockController.GetBlocks();
+            StateHasChanged();
+        });
+    }
+}

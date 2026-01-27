@@ -11,4 +11,8 @@
     <ProjectReference Include="..\ModellClientLib\ModellClientLib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Models\" />
+  </ItemGroup>
+
 </Project>

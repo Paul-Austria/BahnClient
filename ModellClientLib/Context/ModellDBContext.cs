@@ -1,5 +1,4 @@
-﻿
-using ModellClientLib.Models;
+﻿using ModellClientLib.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -10,7 +9,7 @@ namespace ModellClientLib.Context
     {
         public string DbPath { get; }
 
-        public ModellDBContext() 
+        public ModellDBContext()
         {
             var folder = Environment.SpecialFolder.LocalApplicationData;
             var path = Environment.GetFolderPath(folder);
@@ -18,15 +17,14 @@ namespace ModellClientLib.Context
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder options)
-      => options.UseSqlite($"Data Source={DbPath}");
+           => options.UseSqlite($"Data Source={DbPath}");
 
         public DbSet<Switch> switches { get; set; }
         public DbSet<Servo> servos { get; set; }
         public DbSet<Segment> segments { get; set; }
         public DbSet<Locomotive> Locomotives { get; set; }
-
         public DbSet<LocoFunction> LocoFunctions { get; set; }
-
-
+        public DbSet<BlockArea> BlockAreas { get; set; }
+        public DbSet<Module> Modules { get; set; }
     }
 }

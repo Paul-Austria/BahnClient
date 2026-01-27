@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Logging;
 using ModellClientLib.Controllers;
 using ModellClientLib.Models;
-using ModellClientLib.Mqtt;
 using MQTTnet;
 using MQTTnet.Client;
 using System;
@@ -30,7 +29,6 @@ namespace BahnClient.Services
             _mqttClient = factory.CreateMqttClient();
 
             var options = new MqttClientOptionsBuilder()
-                // Use the same broker IP as your background worker
                 .WithTcpServer("192.168.31.123", 1883)
                 .WithClientId("WebClient_Listener_" + Guid.NewGuid())
                 .WithCleanSession()
@@ -42,6 +40,7 @@ namespace BahnClient.Services
                 string topic = e.ApplicationMessage.Topic;
                 string payload = Encoding.UTF8.GetString(e.ApplicationMessage.Payload);
 
+                // TRAIN UPDATES
                 if (topic == "trains/command")
                 {
                     try
@@ -49,14 +48,53 @@ namespace BahnClient.Services
                         var incomingLoco = JsonSerializer.Deserialize<Locomotive>(payload);
                         if (incomingLoco != null)
                         {
-                            // This updates the local cache/DB and triggers the UI Event
                             LocomotiveController.UpdateFromExternal(incomingLoco);
                             _logger.LogInformation($"Web UI Updated for Loco {incomingLoco.ID}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"Error parsing MQTT for UI: {ex.Message}");
+                        _logger.LogError($"Error parsing Train MQTT: {ex.Message}");
+                    }
+                }
+                // BLOCK UPDATES (Wildcard match: ends with /control/block_update)
+                else if (topic.EndsWith("/control/block_update"))
+                {
+                    try
+                    {
+                        // Expected Payload: 
+                        // { "id": 1, "occupied": true, "magnet_count": 5, "direction": "Forward" }
+                        // OR
+                        // { "id": 1, "cmd": "reset" } - handled by controller usually, but listening here ensures UI sync
+
+                        using var doc = JsonDocument.Parse(payload);
+                        var root = doc.RootElement;
+
+                        if (root.TryGetProperty("id", out var idProp))
+                        {
+                            int blockId = idProp.GetInt32();
+
+                            // Check if this is a full state update from ESP32
+                            if (root.TryGetProperty("occupied", out var occProp))
+                            {
+                                bool isOccupied = occProp.GetBoolean();
+                                int count = root.TryGetProperty("magnet_count", out var countProp) ? countProp.GetInt32() : 0;
+                                string dir = root.TryGetProperty("direction", out var dirProp) ? dirProp.GetString() : "None";
+
+                                await BlockController.UpdateStateAsync(blockId, isOccupied, dir, count);
+                                _logger.LogInformation($"Web UI Updated Block {blockId}");
+                            }
+                            else if (root.TryGetProperty("cmd", out var cmdProp))
+                            {
+                                string cmd = cmdProp.GetString();
+                                if (cmd == "reset") await BlockController.ResetBlockAsync(blockId);
+                                if (cmd == "swap_direction") await BlockController.FlipDirectionAsync(blockId);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error parsing Block MQTT: {ex.Message}");
                     }
                 }
             };
@@ -66,17 +104,21 @@ namespace BahnClient.Services
 
             var subOptions = factory.CreateSubscribeOptionsBuilder()
                 .WithTopicFilter(f => f.WithTopic("trains/command"))
+                .WithTopicFilter(f => f.WithTopic("+/control/block_update"))
                 .Build();
 
             await _mqttClient.SubscribeAsync(subOptions, stoppingToken);
 
-            // Keep alive
             while (!stoppingToken.IsCancellationRequested)
             {
-                // Optional: Reconnect logic if disconnected
                 if (!_mqttClient.IsConnected)
                 {
-                    await _mqttClient.ConnectAsync(options, stoppingToken);
+                    try
+                    {
+                        await _mqttClient.ConnectAsync(options, stoppingToken);
+                        await _mqttClient.SubscribeAsync(subOptions, stoppingToken);
+                    }
+                    catch {  }
                 }
                 await Task.Delay(5000, stoppingToken);
             }

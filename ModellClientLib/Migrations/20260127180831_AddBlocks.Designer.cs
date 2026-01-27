@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ModellClientLib.Context;
 
@@ -10,9 +11,10 @@ using ModellClientLib.Context;
 namespace ModellClientLib.Migrations
 {
     [DbContext(typeof(ModellDBContext))]
-    partial class ModellDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260127180831_AddBlocks")]
+    partial class AddBlocks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "6.0.24");
@@ -106,23 +108,6 @@ namespace ModellClientLib.Migrations
                     b.HasKey("ID");
 
                     b.ToTable("Locomotives");
-                });
-
-            modelBuilder.Entity("ModellClientLib.Models.Module", b =>
-                {
-                    b.Property<string>("ControllerTopic")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("LastSeen")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("ControllerTopic");
-
-                    b.ToTable("Modules");
                 });
 
             modelBuilder.Entity("ModellClientLib.Models.Segment", b =>

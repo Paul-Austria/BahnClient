@@ -24,8 +24,17 @@
 #include "nvs_flash.h"
 
 // --- CONFIGURATION ---
-const char* ssid = "H338A_2AC3_2.4G";
-const char* password = "ucgfFyGgK2CX";
+const char* ssid_primary = "DESKTOP-509JTUI";
+const char* pass_primary = "0K367q7;";
+
+const char* ssid_fallback = "H338A_2AC3_2.4G";
+const char* pass_fallback = "ucgfFyGgK2CX";
+
+static int wifi_retry_count = 0;
+static bool using_fallback = false;
+#define MAX_WIFI_RETRIES 3
+
+
 const char* mqtt_server = "192.168.31.123"; 
 const int   mqtt_port = 1883;
 const char* topic_command_base = "trains/command";
@@ -55,6 +64,10 @@ const char* topic_subscribe = "trains/command/#";
 #define LCD_V_RES          240
 #define POWER_BTN_PIN  12
 #define POWER_LED_PIN  13
+#define BTN1  5
+#define BTN2  11
+#define BTN3  1
+
 
 
 static const char *TAG = "TRAIN_CTRL";
@@ -95,12 +108,14 @@ typedef struct {
     lv_obj_t *ind_light;
     lv_obj_t *ind_sound;
     lv_obj_t *lbl_wifi; // To update status
+    lv_obj_t *lbl_stats;
 
     // Objects - Lists
     lv_obj_t *train_list_cont;
     lv_obj_t *train_list;
     lv_obj_t *func_list_cont;
     lv_obj_t *func_list;
+    lv_obj_t *lbl_power_status;
 
     // Input Group reference
     lv_group_t *input_group;
@@ -113,6 +128,18 @@ static void switch_to_screen(current_screen_t new_screen);
 static void update_indicators(void);
 static void update_direction_arrows(void);
 static void send_train_command(void); // MQTT Sender
+
+
+
+static void update_power_indicator(void) {
+    if (!ui_data.lbl_power_status) return;
+    
+    if (ui_data.power_on) {
+        lv_obj_add_flag(ui_data.lbl_power_status, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(ui_data.lbl_power_status, LV_OBJ_FLAG_HIDDEN);
+    }
+}
 
 
 static void init_power_hardware(void) {
@@ -176,7 +203,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     ui_data.power_on = new_pwr;
                     // Update LED
                     gpio_set_level(POWER_LED_PIN, ui_data.power_on ? 1 : 0);
-                    // No need to set power_update_pending (don't echo back)
+                    lvgl_port_lock(0);
+                    update_power_indicator();
+                    lvgl_port_unlock();
+
                     ESP_LOGI(TAG, "Recv Power Sync: %d", ui_data.power_on);
                 }
             }
@@ -265,15 +295,46 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    } 
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_retry_count++;
+        ESP_LOGW(TAG, "Wi-Fi disconnected. Retry %d/%d", wifi_retry_count, MAX_WIFI_RETRIES);
+
+        if (wifi_retry_count >= MAX_WIFI_RETRIES) {
+            // Swap the active network
+            using_fallback = !using_fallback;
+            wifi_retry_count = 0;
+            
+            wifi_config_t wifi_config = {0};
+            wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+            
+            if (using_fallback) {
+                ESP_LOGW(TAG, "Switching to fallback network: %s", ssid_fallback);
+                strcpy((char*)wifi_config.sta.ssid, ssid_fallback);
+                strcpy((char*)wifi_config.sta.password, pass_fallback);
+            } else {
+                ESP_LOGW(TAG, "Switching to primary network: %s", ssid_primary);
+                strcpy((char*)wifi_config.sta.ssid, ssid_primary);
+                strcpy((char*)wifi_config.sta.password, pass_primary);
+            }
+            
+            // Apply new config
+            esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+        }
+
         esp_wifi_connect();
+        
+        // Update UI
         if(ui_data.lbl_wifi) {
              lvgl_port_lock(0);
              lv_label_set_text(ui_data.lbl_wifi, LV_SYMBOL_WIFI " ...");
              lv_obj_set_style_text_color(ui_data.lbl_wifi, lv_color_hex(0x888888), 0);
              lvgl_port_unlock();
         }
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    } 
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ESP_LOGI(TAG, "Got IP Address! Connected to %s", using_fallback ? ssid_fallback : ssid_primary);
+        wifi_retry_count = 0; // Reset counter on successful connection
         esp_mqtt_client_start(mqtt_client);
     }
 }
@@ -289,19 +350,22 @@ static void start_wifi_mqtt(void) {
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
     esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL);
 
-    wifi_config_t wifi_config = { .sta = { .threshold.authmode = WIFI_AUTH_WPA2_PSK } };
-    strcpy((char*)wifi_config.sta.ssid, ssid);
-    strcpy((char*)wifi_config.sta.password, password);
+    // Start with primary network
+    wifi_config_t wifi_config = {0};
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    strcpy((char*)wifi_config.sta.ssid, ssid_primary);
+    strcpy((char*)wifi_config.sta.password, pass_primary);
+    using_fallback = false;
     
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     esp_wifi_start();
+    esp_wifi_set_ps(WIFI_PS_NONE); // Disable power save for minimum latency
 
     // MQTT Config
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = NULL, // Set manually below to support IP string
+        .broker.address.uri = NULL, 
     };
-    // Build URI string
     char uri[64];
     sprintf(uri, "mqtt://%s:%d", mqtt_server, mqtt_port);
     mqtt_cfg.broker.address.uri = uri;
@@ -556,6 +620,27 @@ void build_ui(lv_disp_t * disp, lv_indev_t * indev)
     lv_label_set_text(ui_data.lbl_wifi, LV_SYMBOL_WIFI " ...");
     lv_obj_set_style_text_color(ui_data.lbl_wifi, lv_color_hex(0x888888), 0); // Grey initially
 
+    ui_data.lbl_power_status = lv_label_create(ui_data.main_cont);
+    lv_label_set_text(ui_data.lbl_power_status, LV_SYMBOL_WARNING " PWR OFF");
+    lv_obj_set_style_text_color(ui_data.lbl_power_status, lv_color_hex(0xFF4444), 0); // Bright Red text
+    lv_obj_set_style_bg_color(ui_data.lbl_power_status, lv_color_hex(0x440000), 0);   // Dark Red background
+    lv_obj_set_style_bg_opa(ui_data.lbl_power_status, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_top(ui_data.lbl_power_status, 4, 0);
+    lv_obj_set_style_pad_bottom(ui_data.lbl_power_status, 4, 0);
+    lv_obj_set_style_pad_left(ui_data.lbl_power_status, 8, 0);
+    lv_obj_set_style_pad_right(ui_data.lbl_power_status, 8, 0);
+    lv_obj_set_style_radius(ui_data.lbl_power_status, 10, 0); // Rounded pill shape
+    lv_obj_set_style_text_font(ui_data.lbl_power_status, &lv_font_montserrat_14, 0);
+    lv_obj_align(ui_data.lbl_power_status, LV_ALIGN_TOP_MID, 0, 50); // Tuck it right under the WiFi icon
+
+
+    ui_data.lbl_stats = lv_label_create(ui_data.main_cont);
+    lv_label_set_text(ui_data.lbl_stats, "RSSI: -- | Q: 0 B");
+    lv_obj_set_style_text_font(ui_data.lbl_stats, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(ui_data.lbl_stats, lv_color_hex(0x888888), 0);
+    lv_obj_align(ui_data.lbl_stats, LV_ALIGN_TOP_MID, 0, 75); 
+
+
     // Center Info Column (Name, Direction, Speed)
     lv_obj_t * center = lv_obj_create(ui_data.main_cont);
     lv_obj_remove_style_all(center);
@@ -712,6 +797,7 @@ void build_ui(lv_disp_t * disp, lv_indev_t * indev)
     ui_data.direction_fwd = true;
     update_direction_arrows();
     update_indicators();
+    update_power_indicator();
 
     // Start with Arc focused and in editing mode (so turning knob changes speed)
     lv_group_add_obj(ui_data.input_group, ui_data.arc);
@@ -721,86 +807,99 @@ void build_ui(lv_disp_t * disp, lv_indev_t * indev)
 
 
 static void button_task(void *arg) {
-    adc_oneshot_unit_handle_t adc_handle;
-    adc_oneshot_unit_init_cfg_t init_config = { .unit_id = ADC_UNIT };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
-    adc_oneshot_chan_cfg_t config = { .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12 };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL, &config));
+    // 1. Initialize the new discrete buttons (Active Low with Pullups)
+    gpio_config_t btn_conf = {
+        .pin_bit_mask = (1ULL << BTN1) | (1ULL << BTN2) | (1ULL << BTN3),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE, // Assumes buttons connect to GND
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&btn_conf);
 
     int last_btn = 0;
     int last_pwr_btn_state = 1;
 
-
     while (1) {
-
+        // --- Power Button Logic (Unchanged) ---
         int pwr_btn_state = gpio_get_level(POWER_BTN_PIN);
         if (last_pwr_btn_state == 1 && pwr_btn_state == 0) {
             vTaskDelay(pdMS_TO_TICKS(50)); // Debounce
             if (gpio_get_level(POWER_BTN_PIN) == 0) {
-                
-                // Toggle State
                 ui_data.power_on = !ui_data.power_on;
-                
-                // Update Hardware LED
                 gpio_set_level(POWER_LED_PIN, ui_data.power_on ? 1 : 0);
-                
-                // Trigger MQTT Send
                 ui_data.power_update_pending = true;
-                
+
+                lvgl_port_lock(0);
+                update_power_indicator();
+                lvgl_port_unlock();
+
+
                 ESP_LOGI(TAG, "Power Toggled: %d", ui_data.power_on);
             }
         }
         last_pwr_btn_state = pwr_btn_state;
 
-
-
-        int adc_raw = 0;
-        ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL, &adc_raw));
-        
+        // --- New Discrete Button Logic ---
         int current_btn = 0;
-        if (adc_raw < 500) current_btn = 1;
-        else if (adc_raw > 1500 && adc_raw < 2400) current_btn = 2;
-        else if (adc_raw > 2500 && adc_raw < 2900) current_btn = 3;
-        else if (adc_raw > 2915 && adc_raw < 3300) current_btn = 4;
+        
+        // Read pins (0 means pressed because of pull-up)
+        if (gpio_get_level(BTN1) == 0) current_btn = 1;
+        else if (gpio_get_level(BTN3) == 0) current_btn = 2;
+        else if (gpio_get_level(BTN2) == 0) current_btn = 3;
 
+        // If state changed, debounce and execute
         if (current_btn != last_btn) {
-            vTaskDelay(pdMS_TO_TICKS(50));
-            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL, &adc_raw));
+            vTaskDelay(pdMS_TO_TICKS(50)); // Debounce wait
+            
+            // Re-read to confirm
             int confirm_btn = 0;
-            if (adc_raw < 500) confirm_btn = 1;
-            else if (adc_raw > 1500 && adc_raw < 2400) confirm_btn = 2;
-            else if (adc_raw > 2500 && adc_raw < 2900) confirm_btn = 3;
-            else if (adc_raw > 2920 && adc_raw < 3300) confirm_btn = 4;
+            if (gpio_get_level(BTN1) == 0) confirm_btn = 1;
+            else if (gpio_get_level(BTN3) == 0) confirm_btn = 2;
+            else if (gpio_get_level(BTN2) == 0) confirm_btn = 3;
 
             if (confirm_btn == current_btn && current_btn != 0) {
                 lvgl_port_lock(0);
-                if (current_btn == 1) {
+                
+                if (current_btn == 1) { 
+                    // BTN1: Light (F0)
                     if(ui_data.current_screen == SCREEN_MAIN) {
                         ui_data.light_on = !ui_data.light_on;
                         update_indicators();
                         ui_data.state_changed = true;
                     } else {
+                        // If in a list, maybe trigger the focused item
                         lv_obj_send_event(lv_group_get_focused(ui_data.input_group), LV_EVENT_CLICKED, NULL);
                     }
                 } 
-                else if (current_btn == 2) {
+                else if (current_btn == 2) { 
+                    // BTN2: Sound (F2)
                     if(ui_data.current_screen == SCREEN_MAIN) {
                         ui_data.sound_on = !ui_data.sound_on;
                         update_indicators();
                         ui_data.state_changed = true;
                     } else {
+                        // Exit list back to main
                         switch_to_screen(SCREEN_MAIN);
                     }
                 }
-                else if (current_btn == 3) switch_to_screen(SCREEN_TRAIN_LIST);
-                else if (current_btn == 4) switch_to_screen(SCREEN_FUNC_LIST);
+                else if (current_btn == 3) { 
+                    // BTN3: The New Screen Cycle Logic
+                    if (ui_data.current_screen == SCREEN_MAIN) {
+                        switch_to_screen(SCREEN_TRAIN_LIST);
+                    } else if (ui_data.current_screen == SCREEN_TRAIN_LIST) {
+                        switch_to_screen(SCREEN_FUNC_LIST);
+                    } else {
+                        switch_to_screen(SCREEN_MAIN);
+                    }
+                }
                 lvgl_port_unlock();
             }
             last_btn = confirm_btn;
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(100)); // Task loop delay
     }
 }
+
 
 static void init_encoder_hardware(void) {
     pcnt_unit_config_t unit_config = { .high_limit = 10000, .low_limit = -10000 };
@@ -834,11 +933,11 @@ static void encoder_read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
 
 static void mqtt_sender_task(void *arg) {
     while (1) {
-        // Run at 10Hz (every 100ms)
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // Bumped to 150ms. It gives the WiFi stack just a tiny bit more breathing 
+        // room to clear the outbox without making the UI feel sluggish.
+        vTaskDelay(pdMS_TO_TICKS(150)); 
 
         if (mqtt_client == NULL) continue;
-
 
         if (ui_data.power_update_pending) {
             ui_data.power_update_pending = false;
@@ -847,76 +946,116 @@ static void mqtt_sender_task(void *arg) {
             cJSON_AddBoolToObject(root, "Power", ui_data.power_on);
             
             char *payload = cJSON_PrintUnformatted(root);
-            
-            // Send to generic command topic
             esp_mqtt_client_publish(mqtt_client, "trains/command", payload, 0, 0, 0);
 
             cJSON_Delete(root);
             free(payload);
             ESP_LOGI(TAG, "Sent Power: %d", ui_data.power_on);
-            continue; // Skip checking train commands this cycle
+            continue; 
         }
 
-
-
-        // Check if data changed and needs sending
-        // We use a flag 'state_changed' to avoid constant comparison logic
         if (ui_data.state_changed) {
-            
-            // Clear flag immediately so we capture changes happening while we send
             ui_data.state_changed = false;
+            bool has_changes = false;
 
-            // Update "Last Sent" memory
-            ui_data.sent_speed = ui_data.speed;
-            ui_data.sent_direction_fwd = ui_data.direction_fwd;
-            ui_data.sent_light_on = ui_data.light_on;
-            ui_data.sent_sound_on = ui_data.sound_on;
-
-            // --- BUILD JSON ---
+            // Start JSON with just the identifier
             cJSON *root = cJSON_CreateObject();
             cJSON_AddNumberToObject(root, "ID", TRAIN_ID);
-            cJSON_AddStringToObject(root, "Name", TRAIN_NAME);
-            cJSON_AddNumberToObject(root, "Address", TRAIN_ADDR);
-            cJSON_AddNumberToObject(root, "Speed", ui_data.speed);
-            cJSON_AddNumberToObject(root, "Direction", ui_data.direction_fwd ? 1 : 0);
-            cJSON_AddStringToObject(root, "Topic", "trains/command");
 
-            cJSON *funcs = cJSON_CreateArray();
+            // 1. Check Speed
+            if (ui_data.speed != ui_data.sent_speed) {
+                cJSON_AddNumberToObject(root, "Speed", ui_data.speed);
+                ui_data.sent_speed = ui_data.speed;
+                cJSON_AddNumberToObject(root, "Direction", ui_data.direction_fwd ? 1 : 0);
+                has_changes = true;
+            }else if (ui_data.direction_fwd != ui_data.sent_direction_fwd) {
+                cJSON_AddNumberToObject(root, "Direction", ui_data.direction_fwd ? 1 : 0);
+                ui_data.sent_direction_fwd = ui_data.direction_fwd;
+                has_changes = true;
+            }
+
+            // 3. Check Functions
+            if (ui_data.light_on != ui_data.sent_light_on || ui_data.sound_on != ui_data.sent_sound_on) {
+                cJSON *funcs = cJSON_CreateArray();
+
+                if (ui_data.light_on != ui_data.sent_light_on) {
+                    cJSON *f0 = cJSON_CreateObject();
+                    cJSON_AddNumberToObject(f0, "ID", 1); 
+                    cJSON_AddNumberToObject(f0, "FIndex", 0);
+                    cJSON_AddBoolToObject(f0, "IsActive", ui_data.light_on);
+                    cJSON_AddItemToArray(funcs, f0);
+                    ui_data.sent_light_on = ui_data.light_on;
+                }
+
+                if (ui_data.sound_on != ui_data.sent_sound_on) {
+                    cJSON *f2 = cJSON_CreateObject();
+                    cJSON_AddNumberToObject(f2, "ID", 2);
+                    cJSON_AddNumberToObject(f2, "FIndex", 2);
+                    cJSON_AddBoolToObject(f2, "IsActive", ui_data.sound_on);
+                    cJSON_AddItemToArray(funcs, f2);
+                    ui_data.sent_sound_on = ui_data.sound_on;
+                }
+
+                cJSON_AddItemToObject(root, "Functions", funcs);
+                has_changes = true;
+            }
+
+            // Publish ONLY if we actually added new data to the payload
+            if (has_changes) {
+                char *payload = cJSON_PrintUnformatted(root);
+                char topic[64];
+                sprintf(topic, "%s/%d", topic_command_base, TRAIN_ID);
+                
+                esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 0, 0);
+                
+                ESP_LOGI(TAG, "Delta Sent: %s", payload);
+                free(payload);
+            }
             
-            cJSON *f0 = cJSON_CreateObject();
-            cJSON_AddNumberToObject(f0, "ID", 1); 
-            cJSON_AddNumberToObject(f0, "FIndex", 0);
-            cJSON_AddStringToObject(f0, "Name", "Light");
-            cJSON_AddBoolToObject(f0, "IsActive", ui_data.light_on);
-            cJSON_AddNumberToObject(f0, "LocomotiveID", TRAIN_ID);
-            cJSON_AddItemToArray(funcs, f0);
-
-            cJSON *f2 = cJSON_CreateObject();
-            cJSON_AddNumberToObject(f2, "ID", 2);
-            cJSON_AddNumberToObject(f2, "FIndex", 2);
-            cJSON_AddStringToObject(f2, "Name", "Sound");
-            cJSON_AddBoolToObject(f2, "IsActive", ui_data.sound_on);
-            cJSON_AddNumberToObject(f2, "LocomotiveID", TRAIN_ID);
-            cJSON_AddItemToArray(funcs, f2);
-
-            cJSON_AddItemToObject(root, "Functions", funcs);
-
-            char *payload = cJSON_PrintUnformatted(root);
-            
-            char topic[64];
-            sprintf(topic, "%s/%d", topic_command_base, TRAIN_ID);
-            
-            // Publish (Non-blocking usually, but safe here in own task)
-            esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 0, 0);
-
-            cJSON_Delete(root);
-            free(payload);
-            
-            // Log less frequently to avoid flooding serial
-            ESP_LOGI(TAG, "CMD Sent: Spd %d", ui_data.speed);
+            cJSON_Delete(root); 
         }
     }
 }
+
+static void network_stats_task(void *arg) {
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Update once a second
+
+        int rssi = 0;
+        int queue_size = 0;
+
+        // 1. Get WiFi RSSI
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            rssi = ap_info.rssi;
+        }
+
+        // 2. Get MQTT Outbox (Queue) Size in Bytes
+        if (mqtt_client != NULL) {
+            queue_size = esp_mqtt_client_get_outbox_size(mqtt_client);
+        }
+
+        // 3. Update UI Safely
+        if (ui_data.lbl_stats && ui_data.current_screen == SCREEN_MAIN) {
+            lvgl_port_lock(0);
+            lv_label_set_text_fmt(ui_data.lbl_stats, "RSSI: %d | Q: %dB", rssi, queue_size);
+            
+            // Color code based on network health
+            if (rssi < -80 || queue_size > 1024) {
+                // Bad signal or heavily backed up queue
+                lv_obj_set_style_text_color(ui_data.lbl_stats, lv_palette_main(LV_PALETTE_RED), 0);
+            } else if (rssi < -70 || queue_size > 256) {
+                // Mediocre signal or slight backup
+                lv_obj_set_style_text_color(ui_data.lbl_stats, lv_palette_main(LV_PALETTE_ORANGE), 0);
+            } else {
+                // Good
+                lv_obj_set_style_text_color(ui_data.lbl_stats, lv_color_hex(0x888888), 0);
+            }
+            lvgl_port_unlock();
+        }
+    }
+}
+
 
 void app_main(void) {
     
@@ -964,6 +1103,8 @@ void app_main(void) {
         lvgl_port_unlock();
         xTaskCreatePinnedToCore(mqtt_sender_task, "mqtt_tx", 4096, NULL, 5, NULL, 1);
         xTaskCreatePinnedToCore(button_task, "btn_task", 4096, NULL, 5, NULL, 1);
+        xTaskCreatePinnedToCore(network_stats_task, "net_stats", 2048, NULL, 2, NULL, 1); // <-- NEW
+
         ESP_LOGI(TAG, "UI initialized");
     }
 }

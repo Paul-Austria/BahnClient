@@ -282,16 +282,95 @@
     int newFuncIndex = 0;
     string newFuncName = "";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         LocomotiveController.OnDataChanged += HandleDataChanged;
         RefreshList();
+
+        MqttClientSingleton.Instance.OnMessageReceived += HandleMqttMessage;
+
+        await MqttClientSingleton.Instance.SubscribeAsync("trains/command/#");
     }
 
     public void Dispose()
     {
         LocomotiveController.OnDataChanged -= HandleDataChanged;
+
+        MqttClientSingleton.Instance.OnMessageReceived -= HandleMqttMessage;
     }
+
+    private void HandleMqttMessage(string topic, string payload)
+    {
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+            bool uiNeedsUpdate = false;
+
+            // Check for System Power Command (e.g. {"Power": true})
+            if (root.TryGetProperty("Power", out JsonElement powerElement))
+            {
+                bool newPowerState = powerElement.GetBoolean();
+                if (isTrackPowerOn != newPowerState)
+                {
+                    isTrackPowerOn = newPowerState;
+                    uiNeedsUpdate = true;
+                }
+            }
+
+            // Check for Locomotive Command (e.g. {"ID": 1, "Speed": 50, ...})
+            if (root.TryGetProperty("ID", out JsonElement idElement))
+            {
+                int locoId = idElement.GetInt32();
+                var loco = locomotives.FirstOrDefault(l => l.ID == locoId);
+
+                if (loco != null)
+                {
+                    if (root.TryGetProperty("Speed", out JsonElement speedElement))
+                    {
+                        loco.Speed = speedElement.GetInt32();
+                        uiNeedsUpdate = true;
+                    }
+
+                    if (root.TryGetProperty("Direction", out JsonElement dirElement))
+                    {
+                        loco.Direction = dirElement.GetInt32();
+                        uiNeedsUpdate = true;
+                    }
+
+                    if (root.TryGetProperty("Functions", out JsonElement funcsElement) && funcsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var funcJson in funcsElement.EnumerateArray())
+                        {
+                            if (funcJson.TryGetProperty("FIndex", out JsonElement fIndexElement) &&
+                                funcJson.TryGetProperty("IsActive", out JsonElement isActiveElement))
+                            {
+                                int fIndex = fIndexElement.GetInt32();
+                                bool isActive = isActiveElement.GetBoolean();
+
+                                var func = loco.Functions.FirstOrDefault(f => f.FIndex == fIndex);
+                                if (func != null && func.IsActive != isActive)
+                                {
+                                    func.IsActive = isActive;
+                                    uiNeedsUpdate = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (uiNeedsUpdate)
+            {
+                InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error parsing incoming MQTT: {ex.Message}");
+        }
+    }
+
 
     void HandleDataChanged()
     {
@@ -347,7 +426,7 @@
         if (ActiveLoco != null)
         {
             ActiveLoco.Direction = dir;
-            ActiveLoco.Speed = 0; 
+            ActiveLoco.Speed = 0;
             await LocomotiveController.UpdateLocoStateAsync(ActiveLoco);
         }
     }
@@ -377,7 +456,7 @@
                 RefreshList();
                 newFuncName = ""; newFuncIndex++;
             }
-        } 
+        }
     }
 
     async Task RemoveFunction(LocoFunction func)

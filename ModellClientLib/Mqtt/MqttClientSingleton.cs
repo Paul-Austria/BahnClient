@@ -1,10 +1,9 @@
-﻿
-using MQTTnet;
+﻿using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
-using MQTTnet.Server;
 using System;
-using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace ModellClientLib.Mqtt
 {
@@ -15,39 +14,98 @@ namespace ModellClientLib.Mqtt
         string clientId = Guid.NewGuid().ToString();
         private static MqttClientSingleton _instance;
         public IMqttClient client { get; private set; }
+
+        // 1. ADDED: Event to notify the Blazor page when a message arrives
+        public event Action<string, string> OnMessageReceived;
+
         private MqttClientSingleton()
         {
         }
 
-
-
-
-    public async Task Transmit(string topic, string msg)
-    {
-            Connect();
-            if (client != null && client.IsConnected && topic != "")
-            {
-            var message = new MqttApplicationMessageBuilder()
-                .WithTopic(topic)
-                .WithPayload(msg)
-                .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .WithRetainFlag(false)
-                .Build();
-
-            await client.PublishAsync(message).ConfigureAwait(false);
-        }
-        else
+        public async Task Transmit(string topic, string msg)
         {
-            Connect();
-            // Handle the case where the client is not connected
-            Console.WriteLine("MQTT client is not connected. Trying to Connect");
+            await EnsureConnectedAsync();
+
+            if (client != null && client.IsConnected && !string.IsNullOrEmpty(topic))
+            {
+                var message = new MqttApplicationMessageBuilder()
+                    .WithTopic(topic)
+                    .WithPayload(msg)
+                    .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                    .WithRetainFlag(false)
+                    .Build();
+
+                await client.PublishAsync(message).ConfigureAwait(false);
+            }
+            else
+            {
+                Console.WriteLine("MQTT client is not connected. Message not sent.");
+            }
         }
-    }
+
+        public async Task SubscribeAsync(string topic)
+        {
+            await EnsureConnectedAsync();
+
+            if (client != null && client.IsConnected)
+            {
+                var mqttFactory = new MqttFactory();
+                var subscribeOptions = mqttFactory.CreateSubscribeOptionsBuilder()
+                    .WithTopicFilter(f => f.WithTopic(topic))
+                    .Build();
+
+                await client.SubscribeAsync(subscribeOptions);
+                Console.WriteLine($"Subscribed to topic: {topic}");
+            }
+        }
+
+        public async Task EnsureConnectedAsync()
+        {
+            if (client == null)
+            {
+                var factory = new MqttFactory();
+                client = factory.CreateMqttClient();
+
+                client.ApplicationMessageReceivedAsync += e =>
+                {
+                    string receivedTopic = e.ApplicationMessage.Topic;
+
+                    string payloadStr = e.ApplicationMessage.ConvertPayloadToString();
+
+                    OnMessageReceived?.Invoke(receivedTopic, payloadStr);
+
+                    return Task.CompletedTask;
+                };
+            }
+
+            if (!client.IsConnected)
+            {
+                var options = new MqttClientOptionsBuilder()
+                    .WithTcpServer(broker, port)
+                    .WithClientId(clientId)
+                    .WithCleanSession()
+                    .Build();
+
+                await client.ConnectAsync(options);
+            }
+        }
+
+        public static MqttClientSingleton Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = new MqttClientSingleton();
+                }
+                return _instance;
+            }
+        }
 
         public async void Connect()
         {
 
-            if(client == null || !client.IsConnected)
+            if (client == null || !client.IsConnected)
             {
                 var factory = new MqttFactory();
 
@@ -65,21 +123,5 @@ namespace ModellClientLib.Mqtt
             }
 
         }
-
-
-        public static MqttClientSingleton Instance
-        {
-            get
-            {
-                // Create a new instance if it doesn't exist
-                if (_instance == null)
-                {
-                    _instance = new MqttClientSingleton();
-                }
-                 
-                 return _instance;
-            }
-        }
-        
     }
 }
